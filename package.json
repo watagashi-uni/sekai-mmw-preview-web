@@ -1,0 +1,17 @@
+{
+  "name": "sekai-mmw-preview-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "sync:mmw": "node ./scripts/sync-mmw-assets.mjs",
+    "build:wasm": "node ./scripts/build-wasm.mjs",
+    "dev": "npm run sync:mmw && npm run build:wasm && vite",
+    "build": "npm run sync:mmw && npm run build:wasm && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}

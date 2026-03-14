@@ -1,0 +1,241 @@
+:root {
+  color-scheme: dark;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(38, 68, 102, 0.45), transparent 36%),
+    linear-gradient(180deg, #0d1623 0%, #081018 100%);
+  color: #f4f8fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  align-content: start;
+  min-height: 100vh;
+  padding: 18px;
+  gap: 18px;
+}
+
+.preview-panel {
+  width: min(100%, 1400px);
+  aspect-ratio: 16 / 9;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 22px;
+  border: 1px solid rgba(178, 208, 233, 0.14);
+  background:
+    linear-gradient(180deg, rgba(19, 32, 47, 0.86), rgba(6, 11, 18, 0.92)),
+    linear-gradient(140deg, rgba(89, 153, 219, 0.12), transparent 60%);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.preview-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(7, 11, 18, 0.18), rgba(7, 11, 18, 0.36)),
+    url('/assets/mmw/default.png') center center / cover no-repeat;
+  transform: scale(1.02);
+  z-index: 0;
+}
+
+.preview-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.effects-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.status-layer,
+.unlock-layer,
+.bgm-loading-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  background: rgba(3, 7, 12, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.status-layer[hidden],
+.unlock-layer[hidden],
+.bgm-loading-layer[hidden] {
+  display: none !important;
+}
+
+.status-card,
+.unlock-card {
+  max-width: 440px;
+  padding: 22px 24px;
+  border-radius: 20px;
+  background: rgba(14, 22, 33, 0.92);
+  border: 1px solid rgba(134, 180, 219, 0.22);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+
+.status-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.status-text,
+.meta-line,
+.warning-text {
+  margin-top: 8px;
+  color: rgba(226, 236, 245, 0.72);
+  line-height: 1.45;
+}
+
+.attribution-line {
+  margin-top: 2px;
+  color: rgba(226, 236, 245, 0.5);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.attribution-line a {
+  color: #9fd2ff;
+  text-decoration: none;
+}
+
+.attribution-line a:hover {
+  text-decoration: underline;
+}
+
+.controls {
+  width: min(100%, 1400px);
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(178, 208, 233, 0.14);
+  background: rgba(8, 15, 24, 0.82);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.22);
+}
+
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.controls button,
+.controls select,
+.unlock-button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, #8ec3f6 0%, #5d90cf 100%);
+  color: #06101a;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.controls button.secondary {
+  background: rgba(149, 180, 214, 0.14);
+  color: #eef5fb;
+  border: 1px solid rgba(149, 180, 214, 0.18);
+}
+
+.controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(232, 241, 248, 0.84);
+}
+
+.toggle-control input {
+  margin: 0;
+}
+
+.controls input[type='range'] {
+  accent-color: #8fc7f5;
+}
+
+.timeline {
+  flex: 1 1 280px;
+}
+
+.note-speed {
+  min-width: min(320px, 100%);
+}
+
+.time-readout {
+  min-width: 140px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: rgba(233, 243, 251, 0.88);
+}
+
+.meta-line code {
+  color: #a7d7ff;
+}
+
+.warning-text {
+  color: #ffd28d;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .controls {
+    padding: 14px;
+  }
+
+  .controls-row {
+    align-items: stretch;
+  }
+
+  .time-readout {
+    min-width: 0;
+    text-align: left;
+  }
+}
