@@ -8,7 +8,8 @@
     "build:wasm": "node ./scripts/build-wasm.mjs",
     "dev": "npm run sync:mmw && npm run build:wasm && vite",
     "build": "npm run sync:mmw && npm run build:wasm && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "render:key-audio": "node ./scripts/render-key-audio.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
