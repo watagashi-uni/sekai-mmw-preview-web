@@ -1,10 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
+import crypto from 'node:crypto'
 
 const projectRoot = '/Users/watagashi/Documents/Code/sekai-mmw-preview-web'
 const generatedDir = path.join(projectRoot, 'src/generated')
 const publicWasmDir = path.join(projectRoot, 'public/wasm')
+const wasmManifestFile = path.join(generatedDir, 'mmwWasmAsset.ts')
 
 function hasExecutable(name) {
   try {
@@ -91,4 +93,24 @@ execFileSync(
 fs.copyFileSync(
   path.join(generatedDir, 'mmw-preview.wasm'),
   path.join(publicWasmDir, 'mmw-preview.wasm'),
+)
+
+const wasmBuffer = fs.readFileSync(path.join(generatedDir, 'mmw-preview.wasm'))
+const wasmHash = crypto.createHash('sha256').update(wasmBuffer).digest('hex').slice(0, 12)
+const hashedWasmName = `mmw-preview.${wasmHash}.wasm`
+
+for (const file of fs.readdirSync(publicWasmDir)) {
+  if (/^mmw-preview\.[0-9a-f]{12}\.wasm$/.test(file)) {
+    fs.rmSync(path.join(publicWasmDir, file), { force: true })
+  }
+}
+
+fs.copyFileSync(
+  path.join(generatedDir, 'mmw-preview.wasm'),
+  path.join(publicWasmDir, hashedWasmName),
+)
+
+fs.writeFileSync(
+  wasmManifestFile,
+  `export const mmwWasmFilename = '${hashedWasmName}'\nexport const mmwWasmHash = '${wasmHash}'\n`,
 )

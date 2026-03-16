@@ -53,6 +53,7 @@ namespace mmw_preview
     constexpr float STAGE_WIDTH_RATIO = STAGE_ZOOM * STAGE_LANE_WIDTH / (STAGE_TEX_HEIGHT * STAGE_ASPECT_RATIO) / STAGE_NUM_LANES;
     constexpr float STAGE_HEIGHT_RATIO = STAGE_ZOOM * STAGE_LANE_HEIGHT / STAGE_TEX_HEIGHT;
     constexpr float SCALED_ASPECT_RATIO = (STAGE_TARGET_WIDTH * STAGE_WIDTH_RATIO) / (STAGE_TARGET_HEIGHT * STAGE_HEIGHT_RATIO);
+    constexpr float EFFECTS_TARGET_ASPECT = 16.0f / 9.0f;
 
     enum class TextureId : int
     {
@@ -187,6 +188,7 @@ namespace mmw_preview
 
     using QuadPoints = std::array<Vec2, 4>;
     using QuadUvs = std::array<Vec2, 4>;
+    using QuadReciprocalW = std::array<float, 4>;
 
     struct Tempo
     {
@@ -385,6 +387,7 @@ namespace mmw_preview
         float g{1.0f};
         float b{1.0f};
         float a{1.0f};
+        QuadReciprocalW reciprocalW{1.0f, 1.0f, 1.0f, 1.0f};
         int texture{};
         int zIndex{};
     };
@@ -756,9 +759,18 @@ namespace mmw_preview
         return index >= 0 && static_cast<size_t>(index) < size;
     }
 
-    void pushQuad(const QuadPoints& positions, const QuadUvs& uvs, TextureId texture, float r, float g, float b, float a, int zIndex)
+    void pushQuad(
+        const QuadPoints& positions,
+        const QuadUvs& uvs,
+        TextureId texture,
+        float r,
+        float g,
+        float b,
+        float a,
+        int zIndex,
+        const QuadReciprocalW& reciprocalW = {1.0f, 1.0f, 1.0f, 1.0f})
     {
-        gRuntime.renderQuads.push_back(RenderQuad{positions, uvs, r, g, b, a, static_cast<int>(texture), zIndex});
+        gRuntime.renderQuads.push_back(RenderQuad{positions, uvs, r, g, b, a, reciprocalW, static_cast<int>(texture), zIndex});
     }
 
     mmw::NoteType toMmwNoteType(NoteType type)
@@ -898,6 +910,8 @@ namespace mmw_preview
     {
         const float aspectRatio = gRuntime.height > 0 ? static_cast<float>(gRuntime.width) / static_cast<float>(gRuntime.height) : (16.0f / 9.0f);
         auto projection = gRuntime.effectCamera.getProjectionMatrix(aspectRatio, 0.3f, 1000.0f);
+        const float projectionScale = std::min(aspectRatio / EFFECTS_TARGET_ASPECT, 1.0f);
+        projection = DirectX::XMMatrixScaling(projectionScale, projectionScale, 1.0f) * projection;
         gRuntime.effectRenderer.setEffectMatrices(gRuntime.effectCamera.getViewMatrix(), projection);
         gRuntime.effectRenderer.setOutput(&gRuntime.effectQuads);
         gRuntime.effectQuads.clear();
@@ -912,12 +926,24 @@ namespace mmw_preview
         for (const auto& quad : gRuntime.effectQuads) {
             QuadPoints positions{};
             QuadUvs uvs{};
+            QuadReciprocalW reciprocalW{};
             for (size_t i = 0; i < 4; ++i) {
                 positions[i] = {quad.positions[i * 2 + 0], quad.positions[i * 2 + 1]};
                 uvs[i] = {quad.uvs[i * 2 + 0], quad.uvs[i * 2 + 1]};
+                reciprocalW[i] = quad.reciprocalW[i];
             }
             const int zIndex = quad.zIndex <= 5 ? (-1000000 + quad.zIndex) : (std::numeric_limits<int>::max() - 4096 + quad.zIndex);
-            gRuntime.renderQuads.push_back(RenderQuad{positions, uvs, quad.color.r, quad.color.g, quad.color.b, quad.color.a, quad.textureId, zIndex});
+            gRuntime.renderQuads.push_back(RenderQuad{
+                positions,
+                uvs,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+                reciprocalW,
+                quad.textureId,
+                zIndex,
+            });
         }
     }
 
@@ -2037,11 +2063,13 @@ namespace mmw_preview
         });
 
         gRuntime.packedQuads.clear();
-        gRuntime.packedQuads.reserve(gRuntime.renderQuads.size() * 21);
+        gRuntime.packedQuads.reserve(gRuntime.renderQuads.size() * 25);
         for (const auto& quad : gRuntime.renderQuads) {
-            for (const auto& position : quad.positions) {
+            for (size_t i = 0; i < quad.positions.size(); ++i) {
+                const auto& position = quad.positions[i];
                 gRuntime.packedQuads.push_back(position.x);
                 gRuntime.packedQuads.push_back(position.y);
+                gRuntime.packedQuads.push_back(quad.reciprocalW[i]);
             }
             for (const auto& uv : quad.uvs) {
                 gRuntime.packedQuads.push_back(uv.x);

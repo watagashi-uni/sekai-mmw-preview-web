@@ -1,4 +1,7 @@
 import type { HitEvent, HitEventKind, LoadedQuadFrame, PreviewRuntimeConfig } from './types'
+import { mmwWasmFilename } from '../generated/mmwWasmAsset'
+
+const FLOATS_PER_QUAD = 25
 
 type EmscriptenModule = {
   HEAPF32: Float32Array
@@ -19,7 +22,7 @@ async function loadModule() {
   if (!modulePromise) {
     modulePromise = import('../generated/mmw-preview.js').then(async (module) =>
       (module as { default: (options: { locateFile: (file: string) => string }) => Promise<EmscriptenModule> }).default({
-        locateFile: (file: string) => `/wasm/${file}`,
+        locateFile: (file: string) => (file.endsWith('.wasm') ? `/wasm/${mmwWasmFilename}` : `/wasm/${file}`),
       }),
     )
   }
@@ -106,7 +109,7 @@ export class MmwWasmPreview {
 
     return {
       count,
-      floats: module.HEAPF32.subarray(pointer / 4, pointer / 4 + count * 21),
+      floats: module.HEAPF32.subarray(pointer / 4, pointer / 4 + count * FLOATS_PER_QUAD),
     }
   }
 

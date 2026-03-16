@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <vector>
 
 #include "../Math.h"
@@ -12,6 +13,7 @@ namespace MikuMikuWorld
 	struct EffectOutputQuad
 	{
 		std::array<float, 8> positions{};
+		std::array<float, 4> reciprocalW{};
 		std::array<float, 8> uvs{};
 		Color color{};
 		int textureId{};
@@ -55,8 +57,10 @@ namespace MikuMikuWorld
 				value = DirectX::XMVector4Transform(value, view);
 				value = DirectX::XMVector4Transform(value, projection);
 				const float w = DirectX::XMVectorGetW(value);
-				quad.positions[i * 2 + 0] = DirectX::XMVectorGetX(value) / w;
-				quad.positions[i * 2 + 1] = DirectX::XMVectorGetY(value) / w;
+				const float safeW = std::abs(w) > 0.000001f ? w : 1.0f;
+				quad.positions[i * 2 + 0] = DirectX::XMVectorGetX(value) / safeW;
+				quad.positions[i * 2 + 1] = DirectX::XMVectorGetY(value) / safeW;
+				quad.reciprocalW[i] = 1.0f / safeW;
 			}
 
 			const int row = frame / splitX;

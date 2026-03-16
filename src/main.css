@@ -68,6 +68,194 @@ body {
   height: 100%;
 }
 
+.lock-controls-button {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(147, 190, 228, 0.34);
+  border-radius: 999px;
+  background: rgba(8, 15, 24, 0.74);
+  color: #edf6ff;
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+}
+
+.exit-fullscreen-button {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(147, 190, 228, 0.34);
+  border-radius: 999px;
+  background: rgba(8, 15, 24, 0.74);
+  color: #edf6ff;
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+}
+
+.exit-fullscreen-button:hover {
+  background: rgba(16, 30, 46, 0.9);
+}
+
+.lock-controls-button svg,
+.exit-fullscreen-button svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  pointer-events: none;
+}
+
+.lock-controls-button[hidden],
+.exit-fullscreen-button[hidden] {
+  display: none !important;
+}
+
+.lock-controls-button:hover {
+  background: rgba(16, 30, 46, 0.9);
+}
+
+.app-shell.fullscreen-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  --active-fullscreen-width: 100vw;
+  --active-fullscreen-height: 100dvh;
+  min-height: 100dvh;
+  width: 100vw;
+  padding: 0;
+  gap: 0;
+  grid-template-rows: 1fr;
+  align-items: center;
+  justify-items: center;
+  align-content: center;
+  background: #04070d;
+}
+
+.app-shell.fullscreen-mode .preview-panel {
+  width: min(var(--active-fullscreen-width), calc(var(--active-fullscreen-height) * 16 / 9));
+  height: min(var(--active-fullscreen-height), calc(var(--active-fullscreen-width) * 9 / 16));
+  aspect-ratio: 16 / 9;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.app-shell.fullscreen-mode .preview-panel::before {
+  border-radius: 0;
+}
+
+.app-shell.fullscreen-mode .controls {
+  position: absolute;
+  left: clamp(8px, 1.2vw, 20px);
+  right: clamp(8px, 1.2vw, 20px);
+  bottom: clamp(8px, 1.2vw, 20px);
+  width: auto;
+  z-index: 20;
+  border-radius: 16px;
+  border: 1px solid rgba(147, 190, 228, 0.24);
+  background: rgba(7, 14, 22, 0.76);
+  backdrop-filter: blur(10px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.app-shell.fullscreen-mode .controls-row-speed,
+.app-shell.fullscreen-mode .controls-row-toggle,
+.app-shell.fullscreen-mode .controls-row-fullscreen,
+.app-shell.fullscreen-mode .warning-text,
+.app-shell.fullscreen-mode .ios-hint,
+.app-shell.fullscreen-mode .attribution-line,
+.app-shell.fullscreen-mode #time-readout {
+  display: none;
+}
+
+.app-shell.fullscreen-mode #play-toggle {
+  min-width: 88px;
+}
+
+.controls button.has-icon {
+  display: grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.controls button.has-icon .btn-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.controls button.has-icon .btn-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.controls button.has-icon .btn-label {
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.controls button.has-icon .btn-icon,
+.controls button.has-icon .btn-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+.app-shell.fullscreen-mode .timeline {
+  flex: 1 1 auto;
+}
+
+.app-shell.pseudo-fullscreen-mode {
+  --active-fullscreen-width: var(--pseudo-fullscreen-width, 100vw);
+  --active-fullscreen-height: var(--pseudo-fullscreen-height, 100dvh);
+  width: var(--pseudo-fullscreen-width, 100vw);
+  min-height: var(--pseudo-fullscreen-height, 100dvh);
+  height: var(--pseudo-fullscreen-height, 100dvh);
+  overscroll-behavior: none;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.app-shell.pseudo-fullscreen-mode .controls {
+  left: calc(env(safe-area-inset-left) + 8px);
+  right: calc(env(safe-area-inset-right) + 8px);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+}
+
+.app-shell.pseudo-fullscreen-mode .lock-controls-button {
+  top: calc(env(safe-area-inset-top) + 10px);
+  right: calc(env(safe-area-inset-right) + 10px);
+}
+
+.app-shell.pseudo-fullscreen-mode .exit-fullscreen-button {
+  top: calc(env(safe-area-inset-top) + 10px);
+  left: calc(env(safe-area-inset-left) + 10px);
+}
+
+.controls.hidden-controls {
+  opacity: 0;
+  transform: translateY(14px);
+  pointer-events: none;
+}
+
 .effects-canvas {
   position: absolute;
   inset: 0;
@@ -128,6 +316,7 @@ body {
   color: rgba(226, 236, 245, 0.5);
   font-size: 0.88rem;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .attribution-line a {
@@ -155,6 +344,41 @@ body {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.controls-row > * {
+  min-width: 0;
+}
+
+.controls-row-main {
+  flex-wrap: nowrap;
+}
+
+.controls-row-main .time-readout {
+  margin-left: auto;
+}
+
+.controls-row-progress {
+  display: block;
+}
+
+.controls-row-progress .timeline {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.controls-row-fullscreen {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.controls-row-fullscreen .ios-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  text-align: right;
+  font-size: 0.9rem;
 }
 
 .controls button,
@@ -202,13 +426,33 @@ body {
 }
 
 .note-speed {
-  min-width: min(320px, 100%);
+  min-width: 0;
+  gap: 8px;
+}
+
+.note-speed output {
+  min-width: 4ch;
+  text-align: center;
+  color: rgba(233, 243, 251, 0.92);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.note-speed-step {
+  min-width: 36px;
+  padding: 6px 0 !important;
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
 .time-readout {
-  min-width: 140px;
+  width: 13ch;
+  min-width: 13ch;
+  flex: 0 0 13ch;
+  white-space: nowrap;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   color: rgba(233, 243, 251, 0.88);
 }
 
@@ -218,6 +462,12 @@ body {
 
 .warning-text {
   color: #ffd28d;
+}
+
+.ios-hint {
+  color: rgba(226, 236, 245, 0.56);
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 @media (max-width: 760px) {
@@ -232,10 +482,60 @@ body {
 
   .controls-row {
     align-items: stretch;
+    gap: 8px;
+  }
+
+  .controls-row-main {
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+
+  .timeline {
+    flex: 1 1 160px;
+    min-width: 0;
   }
 
   .time-readout {
+    width: auto;
     min-width: 0;
-    text-align: left;
+    flex: 0 1 auto;
+  }
+
+  .note-speed {
+    flex-wrap: nowrap;
+  }
+
+  .note-speed-step {
+    padding: 6px 8px !important;
+  }
+
+  .controls-row-fullscreen {
+    justify-content: stretch;
+  }
+
+  .controls-row-fullscreen button {
+    flex: 1 1 42%;
+  }
+
+  .controls-row-fullscreen .ios-hint {
+    text-align: center;
+  }
+
+  .app-shell.fullscreen-mode .controls {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .lock-controls-button {
+    top: 10px;
+    right: 10px;
+  }
+
+  .exit-fullscreen-button {
+    top: 10px;
+    left: 10px;
   }
 }
