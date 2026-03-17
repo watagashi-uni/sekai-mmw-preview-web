@@ -84,31 +84,6 @@ Preview built output:
 npm run preview
 ```
 
-## Generate Key Audio
-
-You can generate an audio file that contains only judgement/key sounds from a
-SUS chart.
-
-```bash
-npm run render:key-audio -- --sus ./chart.sus --out ./chart-key.mp3 --offset 9000
-```
-
-It also supports SUS URLs:
-
-```bash
-npm run render:key-audio -- \
-  --sus "https://assets.unipjsk.com/startapp/music/music_score/0703_01/master" \
-  --out ./0703-key.mp3 \
-  --offset 9000
-```
-
-Supported options:
-
-- `--sus <path-or-url>`: required
-- `--out <output-path>`: required
-- `--offset <ms>`: optional, same external positive offset convention as preview URL
-- `--format mp3|wav`: optional, defaults from output extension
-
 ## Project Structure
 
 - `src/`: web app (UI, transport, wasm bridge, renderer)
