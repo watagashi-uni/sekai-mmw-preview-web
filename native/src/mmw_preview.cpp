@@ -38,6 +38,9 @@ namespace mmw_preview
     constexpr int GUIDE_Y_TOP_CUTOFF = -41;
     constexpr int GUIDE_Y_BOTTOM_CUTOFF = -12;
     constexpr double NUM_PI = 3.14159265358979323846;
+    constexpr uint8_t HUD_FLAG_CRITICAL = 1u << 0;
+    constexpr uint8_t HUD_FLAG_HALF_BEAT = 1u << 1;
+    constexpr uint8_t HUD_FLAG_SHOW_JUDGE = 1u << 2;
 
     constexpr float STAGE_LANE_TOP = 47.0f;
     constexpr float STAGE_LANE_HEIGHT = 850.0f;
@@ -402,6 +405,24 @@ namespace mmw_preview
         float endTimeSec{};
     };
 
+    enum class HudEventKind : int
+    {
+        Tap = 0,
+        CriticalTap = 1,
+        Flick = 2,
+        Trace = 3,
+        Tick = 4,
+        HoldHalfBeat = 5,
+    };
+
+    struct HudEvent
+    {
+        float timeSec{};
+        float weight{};
+        float kind{};
+        float flags{};
+    };
+
     struct RuntimeState
     {
         PreviewRuntimeConfig config{};
@@ -416,6 +437,8 @@ namespace mmw_preview
         std::vector<float> packedQuads;
         std::vector<HitEvent> hitEvents;
         std::vector<float> packedHitEvents;
+        std::vector<HudEvent> hudEvents;
+        std::vector<float> packedHudEvents;
         mmw::ScoreContext effectContext{};
         mmw::Effect::EffectView effectView{};
         mmw::Camera effectCamera{};
@@ -1046,6 +1069,167 @@ namespace mmw_preview
             gRuntime.packedHitEvents.push_back(event.kind);
             gRuntime.packedHitEvents.push_back(event.flags);
             gRuntime.packedHitEvents.push_back(event.endTimeSec);
+        }
+    }
+
+    [[nodiscard]] float getHudWeight(HudEventKind kind, bool critical)
+    {
+        switch (kind) {
+            case HudEventKind::Flick:
+                return critical ? 3.0f : 1.0f;
+            case HudEventKind::Trace:
+                return critical ? 0.2f : 0.1f;
+            case HudEventKind::Tick:
+            case HudEventKind::HoldHalfBeat:
+                return critical ? 0.2f : 0.1f;
+            case HudEventKind::CriticalTap:
+                return 2.0f;
+            case HudEventKind::Tap:
+            default:
+                return critical ? 2.0f : 1.0f;
+        }
+    }
+
+    void calculateHudEvents()
+    {
+        gRuntime.hudEvents.clear();
+        gRuntime.packedHudEvents.clear();
+
+        if (gRuntime.score.tempoChanges.empty()) {
+            return;
+        }
+
+        std::unordered_map<int, HoldStepType> holdStepTypesById;
+        holdStepTypesById.reserve(gRuntime.score.notes.size());
+        for (const auto& [holdId, hold] : gRuntime.score.holdNotes) {
+            (void)holdId;
+            for (const auto& step : hold.steps) {
+                holdStepTypesById.emplace(step.ID, step.type);
+            }
+        }
+
+        auto pushEvent = [](float timeSec, HudEventKind kind, bool critical, bool halfBeat, bool showJudge) {
+            uint8_t flags = 0;
+            if (critical) {
+                flags = static_cast<uint8_t>(flags | HUD_FLAG_CRITICAL);
+            }
+            if (halfBeat) {
+                flags = static_cast<uint8_t>(flags | HUD_FLAG_HALF_BEAT);
+            }
+            if (showJudge) {
+                flags = static_cast<uint8_t>(flags | HUD_FLAG_SHOW_JUDGE);
+            }
+
+            gRuntime.hudEvents.push_back(HudEvent{
+                timeSec,
+                getHudWeight(kind, critical),
+                static_cast<float>(static_cast<int>(kind)),
+                static_cast<float>(flags),
+            });
+        };
+
+        for (const auto& [id, note] : gRuntime.score.notes) {
+            (void)id;
+
+            const HoldNote* hold = nullptr;
+            if (note.type == NoteType::Hold) {
+                auto holdIt = gRuntime.score.holdNotes.find(note.ID);
+                if (holdIt == gRuntime.score.holdNotes.end()) {
+                    continue;
+                }
+                hold = &holdIt->second;
+            } else if (note.type == NoteType::HoldMid || note.type == NoteType::HoldEnd) {
+                auto holdIt = gRuntime.score.holdNotes.find(note.parentID);
+                if (holdIt == gRuntime.score.holdNotes.end()) {
+                    continue;
+                }
+                hold = &holdIt->second;
+            }
+
+            if (hold != nullptr && hold->isGuide()) {
+                continue;
+            }
+
+            if (note.type == NoteType::Hold && hold != nullptr && hold->startType != HoldNoteType::Normal) {
+                continue;
+            }
+            if (note.type == NoteType::HoldEnd && hold != nullptr && hold->endType != HoldNoteType::Normal) {
+                continue;
+            }
+            if (note.type == NoteType::HoldMid) {
+                auto stepTypeIt = holdStepTypesById.find(note.ID);
+                if (stepTypeIt != holdStepTypesById.end() && stepTypeIt->second == HoldStepType::Hidden) {
+                    continue;
+                }
+            }
+
+            HudEventKind kind = HudEventKind::Tap;
+            if (note.type == NoteType::HoldMid) {
+                kind = HudEventKind::Tick;
+            } else if (note.isFlick()) {
+                kind = HudEventKind::Flick;
+            } else if (note.friction) {
+                kind = HudEventKind::Trace;
+            } else if (note.critical) {
+                kind = HudEventKind::CriticalTap;
+            }
+
+            pushEvent(
+                accumulateDuration(note.tick, TICKS_PER_BEAT, gRuntime.score.tempoChanges),
+                kind,
+                note.critical,
+                false,
+                true);
+        }
+
+        constexpr int halfBeat = TICKS_PER_BEAT / 2;
+        for (const auto& [holdId, hold] : gRuntime.score.holdNotes) {
+            if (hold.isGuide()) {
+                continue;
+            }
+
+            const Note& holdStart = gRuntime.score.notes.at(holdId);
+            const Note& holdEnd = gRuntime.score.notes.at(hold.end);
+            int startTick = holdStart.tick;
+            int endTick = holdEnd.tick;
+            int eigthTick = startTick;
+
+            eigthTick += halfBeat;
+            if (eigthTick % halfBeat) {
+                eigthTick -= (eigthTick % halfBeat);
+            }
+
+            if (eigthTick == startTick || eigthTick == endTick) {
+                continue;
+            }
+
+            if (endTick % halfBeat) {
+                endTick += halfBeat - (endTick % halfBeat);
+            }
+
+            for (int tick = eigthTick; tick < endTick; tick += halfBeat) {
+                pushEvent(
+                    accumulateDuration(tick, TICKS_PER_BEAT, gRuntime.score.tempoChanges),
+                    HudEventKind::HoldHalfBeat,
+                    holdStart.critical,
+                    true,
+                    false);
+            }
+        }
+
+        std::stable_sort(gRuntime.hudEvents.begin(), gRuntime.hudEvents.end(), [](const HudEvent& lhs, const HudEvent& rhs) {
+            if (lhs.timeSec == rhs.timeSec) {
+                return lhs.kind < rhs.kind;
+            }
+            return lhs.timeSec < rhs.timeSec;
+        });
+
+        gRuntime.packedHudEvents.reserve(gRuntime.hudEvents.size() * 4);
+        for (const auto& event : gRuntime.hudEvents) {
+            gRuntime.packedHudEvents.push_back(event.timeSec);
+            gRuntime.packedHudEvents.push_back(event.weight);
+            gRuntime.packedHudEvents.push_back(event.kind);
+            gRuntime.packedHudEvents.push_back(event.flags);
         }
     }
 
@@ -2112,6 +2296,7 @@ extern "C"
             gRuntime.score = susToScore(sus, static_cast<float>(normalizedOffsetMs));
             calculateDrawData(gRuntime.drawData, gRuntime.score);
             calculateHitEvents();
+            calculateHudEvents();
             initializeEffects();
             rebuildEffectScore();
             gRuntime.lastError.clear();
@@ -2120,10 +2305,14 @@ extern "C"
         } catch (const std::exception& exception) {
             gRuntime.lastError = exception.what();
             gRuntime.loaded = false;
+            gRuntime.score = {};
+            gRuntime.drawData.clear();
             gRuntime.renderQuads.clear();
             gRuntime.packedQuads.clear();
             gRuntime.hitEvents.clear();
             gRuntime.packedHitEvents.clear();
+            gRuntime.hudEvents.clear();
+            gRuntime.packedHudEvents.clear();
             return 0;
         }
     }
@@ -2223,6 +2412,31 @@ extern "C"
     EMSCRIPTEN_KEEPALIVE int getHitEventCount()
     {
         return static_cast<int>(mmw_preview::gRuntime.hitEvents.size());
+    }
+
+    EMSCRIPTEN_KEEPALIVE const char* getMetadataTitle()
+    {
+        return mmw_preview::gRuntime.score.metadata.title.c_str();
+    }
+
+    EMSCRIPTEN_KEEPALIVE const char* getMetadataArtist()
+    {
+        return mmw_preview::gRuntime.score.metadata.artist.c_str();
+    }
+
+    EMSCRIPTEN_KEEPALIVE const char* getMetadataDesigner()
+    {
+        return mmw_preview::gRuntime.score.metadata.author.c_str();
+    }
+
+    EMSCRIPTEN_KEEPALIVE const float* getHudEventBufferPointer()
+    {
+        return mmw_preview::gRuntime.packedHudEvents.empty() ? nullptr : mmw_preview::gRuntime.packedHudEvents.data();
+    }
+
+    EMSCRIPTEN_KEEPALIVE int getHudEventCount()
+    {
+        return static_cast<int>(mmw_preview::gRuntime.hudEvents.size());
     }
 
     EMSCRIPTEN_KEEPALIVE void dispose()

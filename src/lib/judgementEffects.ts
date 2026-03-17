@@ -40,7 +40,7 @@ export class JudgementEffects {
 
     this.particles.push({
       startedAtSec: nowSec,
-      lifetimeSec: event.kind === 'hold' ? 0.36 : 0.28,
+      lifetimeSec: event.kind === 'holdLoop' ? 0.36 : 0.28,
       x: center.x,
       y: center.y,
       radius: spread,
@@ -51,13 +51,13 @@ export class JudgementEffects {
       alpha: event.critical ? 0.75 : 0.58,
     })
 
-    const sparkCount = event.kind === 'hold' ? 10 : 14
+    const sparkCount = event.kind === 'holdLoop' ? 10 : 14
     for (let index = 0; index < sparkCount; index += 1) {
       const angle = (Math.PI * 2 * index) / sparkCount + (event.kind === 'flick' ? -0.35 : 0)
       const speed = spread * (event.kind === 'flick' ? 2.3 : 1.6)
       this.particles.push({
         startedAtSec: nowSec,
-        lifetimeSec: event.kind === 'hold' ? 0.28 : 0.24,
+        lifetimeSec: event.kind === 'holdLoop' ? 0.28 : 0.24,
         x: center.x,
         y: center.y,
         radius: event.critical ? 4 : 3,

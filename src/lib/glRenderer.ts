@@ -205,29 +205,13 @@ export class GlPreviewRenderer {
   async loadTextures() {
     await Promise.all(
       (Object.entries(mmwTextureUrls) as [TextureKey, string][]).map(async ([key, url]) => {
-        const image = await loadImage(url)
-        const texture = this.gl.createTexture()
-        if (!texture) {
-          throw new Error(`Failed to create texture for ${key}.`)
-        }
-
-        this.gl.bindTexture(this.gl.TEXTURE_2D, texture)
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE)
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE)
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR)
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR)
-        this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, 0)
-        this.gl.texImage2D(
-          this.gl.TEXTURE_2D,
-          0,
-          this.gl.RGBA,
-          this.gl.RGBA,
-          this.gl.UNSIGNED_BYTE,
-          image,
-        )
-        this.textures.set(key, { image, texture })
+        await this.loadTextureFromUrl(key, url)
       }),
     )
+  }
+
+  async setBackgroundTexture(url: string) {
+    await this.loadTextureFromUrl('background', url)
   }
 
   resize(width: number, height: number, dpr: number) {
@@ -280,6 +264,31 @@ export class GlPreviewRenderer {
         [1, 1, 1, config.stageOpacity],
       ),
     )
+  }
+
+  private async loadTextureFromUrl(key: TextureKey, url: string) {
+    const image = await loadImage(url)
+    const existing = this.textures.get(key)
+    const texture = existing?.texture ?? this.gl.createTexture()
+    if (!texture) {
+      throw new Error(`Failed to create texture for ${key}.`)
+    }
+
+    this.gl.bindTexture(this.gl.TEXTURE_2D, texture)
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE)
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE)
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR)
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR)
+    this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, 0)
+    this.gl.texImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      this.gl.RGBA,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      image,
+    )
+    this.textures.set(key, { image, texture })
   }
 
   private drawFrame(frame: Float32Array, quadCount: number, config: PreviewRuntimeConfig) {

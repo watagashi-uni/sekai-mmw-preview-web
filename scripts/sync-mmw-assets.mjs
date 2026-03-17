@@ -3,6 +3,8 @@ import path from 'node:path'
 
 const projectRoot = '/Users/watagashi/Documents/Code/sekai-mmw-preview-web'
 const mmwRoot = '/Users/watagashi/Documents/Code/MikuMikuWorld/MikuMikuWorld'
+const overlayRoot = '/Users/watagashi/Downloads/pjsekai-overlay-APPEND-main/assets'
+const backgroundGenRoot = '/Users/watagashi/Documents/Code/pjsekai-background-gen-rust/crates/core/assets'
 
 const assetCopies = [
   ['res/editor/default.png', 'public/assets/mmw/default.png'],
@@ -22,6 +24,31 @@ const assetCopies = [
   ['res/sound/01/se_live_trace_critical.mp3', 'public/assets/mmw/sound/se_live_trace_critical.mp3'],
   ['res/sound/01/se_live_connect_critical.mp3', 'public/assets/mmw/sound/se_live_connect_critical.mp3'],
   ['res/sound/01/se_live_long_critical.mp3', 'public/assets/mmw/sound/se_live_long_critical.mp3'],
+]
+
+const overlayAssetCopies = [
+  ['background_full.png', 'public/assets/mmw/background_overlay.png'],
+  ['start_bg.png', 'public/assets/mmw/overlay/start_bg.png'],
+  ['start_grad.png', 'public/assets/mmw/overlay/start_grad.png'],
+  ['ap.mp4', 'public/assets/mmw/overlay/ap.mp4'],
+  ['combo.png', 'public/assets/mmw/overlay/combo.png'],
+  ['life.png', 'public/assets/mmw/overlay/life.png'],
+]
+
+const overlayTopLevelPngCopies = fs
+  .readdirSync(overlayRoot, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.png'))
+  .map((entry) => [entry.name, `public/assets/mmw/overlay/${entry.name}`])
+
+const overlayDirCopies = [
+  ['score', 'public/assets/mmw/overlay/score'],
+  ['life', 'public/assets/mmw/overlay/life'],
+  ['combo', 'public/assets/mmw/overlay/combo'],
+  ['judge', 'public/assets/mmw/overlay/judge'],
+]
+
+const backgroundGenDirCopies = [
+  ['v3', 'public/assets/mmw/overlay/bggen/v3'],
 ]
 
 const atlasSources = {
@@ -61,6 +88,21 @@ const effectNames = [
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true })
+}
+
+function copyDirectoryRecursive(sourceDir, targetDir) {
+  ensureDir(targetDir)
+  const entries = fs.readdirSync(sourceDir, { withFileTypes: true })
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name)
+    const targetPath = path.join(targetDir, entry.name)
+    if (entry.isDirectory()) {
+      copyDirectoryRecursive(sourcePath, targetPath)
+    } else if (entry.isFile()) {
+      ensureDir(path.dirname(targetPath))
+      fs.copyFileSync(sourcePath, targetPath)
+    }
+  }
 }
 
 function parseAtlas(text) {
@@ -154,6 +196,30 @@ for (const [from, to] of assetCopies) {
   fs.copyFileSync(source, target)
 }
 
+for (const [from, to] of overlayAssetCopies) {
+  const source = path.join(overlayRoot, from)
+  const target = path.join(projectRoot, to)
+  ensureDir(path.dirname(target))
+  fs.copyFileSync(source, target)
+}
+
+for (const [from, to] of overlayTopLevelPngCopies) {
+  const source = path.join(overlayRoot, from)
+  const target = path.join(projectRoot, to)
+  ensureDir(path.dirname(target))
+  fs.copyFileSync(source, target)
+}
+
+for (const [from, to] of overlayDirCopies) {
+  copyDirectoryRecursive(path.join(overlayRoot, from), path.join(projectRoot, to))
+}
+
+if (fs.existsSync(backgroundGenRoot)) {
+  for (const [from, to] of backgroundGenDirCopies) {
+    copyDirectoryRecursive(path.join(backgroundGenRoot, from), path.join(projectRoot, to))
+  }
+}
+
 for (const effectName of effectNames) {
   const source = path.join(mmwRoot, 'res/effect/0', `${effectName}.json`)
   const target = path.join(projectRoot, 'public/assets/mmw/effects', `${effectName}.json`)
@@ -190,7 +256,7 @@ writeTextFile(
 }
 
 export const mmwTextureUrls = {
-  background: '/assets/mmw/default.png',
+  background: '/assets/mmw/background_overlay.png',
   stage: '/assets/mmw/stage.png',
   notes: '/assets/mmw/notes.png',
   longNoteLine: '/assets/mmw/longNoteLine.png',
