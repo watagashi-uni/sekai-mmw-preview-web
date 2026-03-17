@@ -585,8 +585,12 @@ namespace mmw_preview
 
     [[nodiscard]] double accumulateScaledDuration(int tick, int beatTicks, const std::vector<Tempo>& tempos, const std::vector<HiSpeedChange>& hiSpeeds)
     {
-        if (tick <= 0 || tempos.empty()) {
+        if (tempos.empty()) {
             return 0.0;
+        }
+        if (tick <= 0) {
+            const float currentBpm = tempos.front().bpm;
+            return ticksToSec(tick, beatTicks, currentBpm);
         }
 
         int previousTempo = 0;
@@ -1960,8 +1964,7 @@ namespace mmw_preview
                 continue;
             }
 
-            const Range visualTime = getNoteVisualTime(note, score, drawData.noteSpeed);
-            drawData.drawingNotes.push_back({note.ID, visualTime});
+            drawData.drawingNotes.push_back({note.ID, getNoteVisualTime(note, score, drawData.noteSpeed)});
 
             const float center = getNoteCenter(note);
             auto [rangeIt, inserted] = simultaneousBuilder.try_emplace(note.tick, Range{center, center});

@@ -185,6 +185,7 @@ const hudIntroCard = app.querySelector<HTMLDivElement>('#hud-intro-card')!
 const hudIntroBgCanvas = app.querySelector<HTMLCanvasElement>('#hud-intro-bg-canvas')!
 const hudIntroCoverShell = app.querySelector<HTMLDivElement>('#hud-intro-cover-shell')!
 const hudIntroCover = app.querySelector<HTMLImageElement>('#hud-intro-cover')!
+const hudIntroText = app.querySelector<HTMLDivElement>('.hud-intro-text')!
 const hudIntroDifficulty = app.querySelector<HTMLDivElement>('#hud-intro-difficulty')!
 const hudIntroExtra = app.querySelector<HTMLDivElement>('#hud-intro-extra')!
 const hudIntroTitle = app.querySelector<HTMLDivElement>('#hud-intro-title')!
@@ -228,7 +229,19 @@ type IntroCardMetadata = {
   difficulty: string
 }
 
+const INTRO_COVER_LAYOUT = {
+  leftPx: 168,
+  bottomPx: 170,
+  sizePx: 190,
+  textLeftPx: 414,
+  textBottomPx: 148,
+  noCoverTextLeftPx: 186,
+}
+
 let normalizedOffsetMs = 0
+let sourceOffsetSec = 0
+let chartLeadInSec = 9
+let audioStartDelaySec = 0
 let previewReady = false
 let rendererReady = false
 let warningMessage = ''
@@ -271,6 +284,7 @@ const LOW_RENDER_WIDTH = 960
 const LOW_RENDER_HEIGHT = 540
 const UI_REFRESH_INTERVAL_MS = 50
 const HUD_INTRO_DURATION_SEC = 5
+const MIN_CHART_LEAD_IN_SEC = 9
 const JUDGE_ANIMATION_TOTAL_FRAMES = 20
 const JUDGE_ANIMATION_FPS = 60
 const FIXED_BACKGROUND_URL = '/assets/mmw/background_overlay.png'
@@ -553,7 +567,7 @@ function queueApPlayback() {
       return
     }
     const snapshot = transport.getSnapshot()
-    if (snapshot.currentTimeSec + 0.05 < chartPlayableEndSec) {
+    if (toChartTimeSec(snapshot.currentTimeSec) + 0.05 < chartPlayableEndSec) {
       return
     }
     startApPlayback()
@@ -1038,6 +1052,14 @@ function updateComboAnimation(currentTimeSec: number, combo: number, hidden: boo
 }
 
 function setHudCover(url: string | null) {
+  hudIntroCoverShell.style.left = `${INTRO_COVER_LAYOUT.leftPx}px`
+  hudIntroCoverShell.style.bottom = `${INTRO_COVER_LAYOUT.bottomPx}px`
+  hudIntroCoverShell.style.width = `${INTRO_COVER_LAYOUT.sizePx}px`
+  hudIntroCoverShell.style.height = `${INTRO_COVER_LAYOUT.sizePx}px`
+  hudIntroText.style.left = `${INTRO_COVER_LAYOUT.textLeftPx}px`
+  hudIntroText.style.bottom = `${INTRO_COVER_LAYOUT.textBottomPx}px`
+  hudIntroCard.style.setProperty('--intro-text-left', `${INTRO_COVER_LAYOUT.noCoverTextLeftPx}px`)
+
   if (!url) {
     hudIntroCoverShell.hidden = true
     hudIntroCover.hidden = true
@@ -1189,7 +1211,23 @@ function isIntroVisible(currentTimeSec: number, transportState: TransportState) 
   return hasIntroCardContent() && transportState === 'playing' && currentTimeSec >= 0 && currentTimeSec < HUD_INTRO_DURATION_SEC
 }
 
-function renderHud(state: HudRuntimeState, currentTimeSec: number, transportState: TransportState) {
+function updateTimingAlignment() {
+  sourceOffsetSec = -normalizedOffsetMs / 1000
+  chartLeadInSec = Math.max(sourceOffsetSec, MIN_CHART_LEAD_IN_SEC)
+  audioStartDelaySec = Math.max(0, chartLeadInSec - sourceOffsetSec)
+  transport.setAudioStartOffset(audioStartDelaySec)
+}
+
+function toChartTimeSec(currentTimeSec: number) {
+  return currentTimeSec - chartLeadInSec
+}
+
+function renderHud(
+  state: HudRuntimeState,
+  currentTimeSec: number,
+  transportState: TransportState,
+  chartTimeSec: number,
+) {
   hudLayer.hidden = !previewReady
   if (!previewReady) {
     previewPanel.classList.remove('intro-active')
@@ -1212,10 +1250,10 @@ function renderHud(state: HudRuntimeState, currentTimeSec: number, transportStat
   setScoreDigits(state.score)
   setLifeDigits(state.lifeRatio)
   setComboDigits(state.combo)
-  updateComboAnimation(currentTimeSec, state.combo, introVisible)
+  updateComboAnimation(chartTimeSec, state.combo, introVisible)
   hudScoreBarClip.style.width = `${Math.min(100, Math.max(0, state.scoreBarRatio * 100))}%`
   hudLifeFillClip.style.width = `${Math.min(100, Math.max(0, state.lifeRatio * 100))}%`
-  renderJudgeBursts(currentTimeSec, introVisible)
+  renderJudgeBursts(chartTimeSec, introVisible)
 }
 
 async function fetchText(url: string) {
@@ -1292,23 +1330,24 @@ async function bootstrap() {
       : Promise.resolve<ArrayBuffer | null>(null)
     const susText = await susFetchPromise
     normalizedOffsetMs = normalizeOffsetMs(params.rawOffsetMs, susText)
+    updateTimingAlignment()
 
-    wasm.loadSusText(susText, normalizedOffsetMs)
+    wasm.loadSusText(susText, -chartLeadInSec * 1000)
     wasm.setPreviewConfig(currentConfig)
     songMetadata = wasm.getSongMetadata()
     introMetadata = resolveIntroMetadata(params, songMetadata)
     applyHudMetadata()
     hitEvents = wasm.getHitEvents().map((event) => ({
       ...event,
-      timeSec: event.timeSec - normalizedOffsetMs / 1000,
+      timeSec: event.timeSec,
       endTimeSec:
         event.endTimeSec === undefined
           ? undefined
-          : event.endTimeSec - normalizedOffsetMs / 1000,
+          : event.endTimeSec,
     }))
     hudEvents = wasm.getHudEvents().map((event) => ({
       ...event,
-      timeSec: event.timeSec - normalizedOffsetMs / 1000,
+      timeSec: event.timeSec,
     }))
     hudJudgeTimes = hudEvents
       .filter((event) => event.showJudge)
@@ -1323,13 +1362,13 @@ async function bootstrap() {
     nextHitEventIndex = 0
 
     const chartEndTimeSec = wasm.getChartEndTimeSec()
-    chartPlayableEndSec = Math.max(0, chartEndTimeSec - normalizedOffsetMs / 1000)
-    const minimumDurationSec = Math.max(chartEndTimeSec - normalizedOffsetMs / 1000 + 1, 1)
+    chartPlayableEndSec = Math.max(0, chartEndTimeSec)
+    const minimumDurationSec = Math.max(chartEndTimeSec + chartLeadInSec + 1, 1)
     transport.setDuration(minimumDurationSec)
     transport.setReady()
     transport.seek(0)
-    previousTimeSec = 0
-    nextHitEventIndex = 0
+    previousTimeSec = toChartTimeSec(0)
+    nextHitEventIndex = lowerBoundHitEvent(previousTimeSec)
     stopApPlayback(true)
 
     previewReady = true
@@ -1427,8 +1466,9 @@ progressInput.addEventListener('input', () => {
   const nextTime = Number(progressInput.value)
   transport.seek(nextTime)
   stopApPlayback(true)
-  nextHitEventIndex = lowerBoundHitEvent(nextTime)
-  previousTimeSec = nextTime
+  const chartTimeSec = toChartTimeSec(nextTime)
+  nextHitEventIndex = lowerBoundHitEvent(chartTimeSec)
+  previousTimeSec = chartTimeSec
   effects.reset()
   updateUi()
 })
@@ -1677,8 +1717,8 @@ function frameLoop() {
     const snapshot = transport.getSnapshot()
     const currentTimeSec = snapshot.currentTimeSec
     const introVisible = isIntroVisible(currentTimeSec, snapshot.state)
-    const chartTimeSec = currentTimeSec + normalizedOffsetMs / 1000
-    const frame = previewReady && !introVisible ? wasm.render(chartTimeSec) : { count: 0, floats: emptyFrame }
+    const chartTimeSec = toChartTimeSec(currentTimeSec)
+    const frame = previewReady ? wasm.render(chartTimeSec) : { count: 0, floats: emptyFrame }
     const renderConfig = introVisible
       ? {
           ...currentConfig,
@@ -1690,7 +1730,7 @@ function frameLoop() {
     const reachedChartEnd =
       previewReady &&
       Number.isFinite(chartPlayableEndSec) &&
-      currentTimeSec >= chartPlayableEndSec - 0.0001 &&
+      chartTimeSec >= chartPlayableEndSec - 0.0001 &&
       (snapshot.state === 'playing' || previousTransportState === 'playing')
     if (reachedChartEnd) {
       queueApPlayback()
@@ -1698,29 +1738,29 @@ function frameLoop() {
 
     if (previewReady) {
       if (introVisible) {
-        nextHitEventIndex = lowerBoundHitEvent(currentTimeSec)
+        nextHitEventIndex = lowerBoundHitEvent(chartTimeSec)
         effects.reset()
         judgementSounds.stopAll()
       } else if (
         snapshot.state !== 'playing' ||
         previousTransportState !== 'playing' ||
-        currentTimeSec < previousTimeSec ||
-        currentTimeSec - previousTimeSec > 0.25
+        chartTimeSec < previousTimeSec ||
+        chartTimeSec - previousTimeSec > 0.25
       ) {
-        nextHitEventIndex = lowerBoundHitEvent(currentTimeSec)
+        nextHitEventIndex = lowerBoundHitEvent(chartTimeSec)
         if (snapshot.state !== 'playing') {
           effects.reset()
           judgementSounds.stopAll()
         } else {
-          resumeActiveHoldLoops(currentTimeSec)
+          resumeActiveHoldLoops(chartTimeSec)
         }
       } else {
-        emitHitEvents(previousTimeSec, currentTimeSec)
+        emitHitEvents(previousTimeSec, chartTimeSec)
       }
     }
 
     if (previewReady && hudTimeline) {
-      renderHud(hudTimeline.snapshotAt(currentTimeSec), currentTimeSec, snapshot.state)
+      renderHud(hudTimeline.snapshotAt(chartTimeSec), currentTimeSec, snapshot.state, chartTimeSec)
     } else {
       hudLayer.hidden = true
       previewPanel.classList.remove('intro-active')
@@ -1733,7 +1773,7 @@ function frameLoop() {
       updateUi()
       lastUiRefreshMs = nowMs
     }
-    previousTimeSec = currentTimeSec
+    previousTimeSec = chartTimeSec
     previousTransportState = snapshot.state
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown render error'

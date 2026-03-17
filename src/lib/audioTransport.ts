@@ -13,6 +13,7 @@ export class AudioTransport {
   private startedAtAudioTime = 0
   private startedAtWallTime = 0
   private durationSec = 0
+  private audioStartOffsetSec = 0
   private pendingGestureStart = false
   private readonly listeners = new Set<Listener>()
 
@@ -54,6 +55,21 @@ export class AudioTransport {
     this.emit()
   }
 
+  setAudioStartOffset(offsetSec: number) {
+    this.audioStartOffsetSec = Math.max(offsetSec, 0)
+    if (this.audioBuffer) {
+      this.durationSec = Math.max(this.durationSec, this.audioStartOffsetSec + this.audioBuffer.duration)
+    }
+    if (this.state === 'playing') {
+      this.baseTimeSec = this.getCurrentTimeSec()
+      this.stopSource()
+      this.startPlayback()
+      return
+    }
+    this.baseTimeSec = this.clampTime(this.baseTimeSec)
+    this.emit()
+  }
+
   async setAudioData(data: ArrayBuffer | null) {
     if (!data) {
       this.audioBuffer = null
@@ -63,7 +79,7 @@ export class AudioTransport {
 
     const context = this.getOrCreateAudioContext()
     this.audioBuffer = await context.decodeAudioData(data.slice(0))
-    this.durationSec = Math.max(this.durationSec, this.audioBuffer.duration)
+    this.durationSec = Math.max(this.durationSec, this.audioStartOffsetSec + this.audioBuffer.duration)
     this.emit()
   }
 
@@ -171,32 +187,37 @@ export class AudioTransport {
     this.baseTimeSec = this.clampTime(this.baseTimeSec)
     this.startedAtWallTime = performance.now()
     this.startedAtAudioTime = this.audioContext?.currentTime ?? 0
-    if (this.audioBuffer && this.audioContext && this.baseTimeSec < this.audioBuffer.duration) {
-      this.stopSource()
-      const source = this.audioContext.createBufferSource()
-      source.buffer = this.audioBuffer
-      source.playbackRate.value = this.playbackRate
-      this.gainNode ??= this.audioContext.createGain()
-      source.connect(this.gainNode)
-      this.gainNode.connect(this.audioContext.destination)
-      source.onended = () => {
-        if (this.source === source && this.state === 'playing') {
-          const currentTimeSec = Math.min(this.durationSec, this.getCurrentTimeSec())
-          this.source = null
-          this.baseTimeSec = currentTimeSec
-          if (currentTimeSec < this.durationSec) {
-            this.startedAtWallTime = performance.now()
-            this.startedAtAudioTime = this.audioContext?.currentTime ?? 0
+    this.stopSource()
+    if (this.audioBuffer && this.audioContext) {
+      const audioTimeSec = this.baseTimeSec - this.audioStartOffsetSec
+      const sourceOffsetSec = Math.max(audioTimeSec, 0)
+      const startDelaySec = audioTimeSec < 0 ? (-audioTimeSec) / this.playbackRate : 0
+      if (sourceOffsetSec < this.audioBuffer.duration) {
+        const source = this.audioContext.createBufferSource()
+        source.buffer = this.audioBuffer
+        source.playbackRate.value = this.playbackRate
+        this.gainNode ??= this.audioContext.createGain()
+        source.connect(this.gainNode)
+        this.gainNode.connect(this.audioContext.destination)
+        source.onended = () => {
+          if (this.source === source && this.state === 'playing') {
+            const currentTimeSec = Math.min(this.durationSec, this.getCurrentTimeSec())
+            this.source = null
+            this.baseTimeSec = currentTimeSec
+            if (currentTimeSec < this.durationSec) {
+              this.startedAtWallTime = performance.now()
+              this.startedAtAudioTime = this.audioContext?.currentTime ?? 0
+              this.emit()
+              return
+            }
+            this.state = 'paused'
             this.emit()
-            return
           }
-          this.state = 'paused'
-          this.emit()
         }
+        source.start(this.audioContext.currentTime + startDelaySec, sourceOffsetSec)
+        this.source = source
+        this.startedAtAudioTime = this.audioContext.currentTime
       }
-      source.start(0, this.baseTimeSec)
-      this.source = source
-      this.startedAtAudioTime = this.audioContext.currentTime
     }
 
     this.state = 'playing'
