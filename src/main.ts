@@ -230,11 +230,11 @@ type IntroCardMetadata = {
 }
 
 const INTRO_COVER_LAYOUT = {
-  leftPx: 168,
-  bottomPx: 170,
-  sizePx: 190,
-  textLeftPx: 414,
-  textBottomPx: 148,
+  leftPx: 148,
+  bottomPx: 104,
+  sizePx: 350,
+  textLeftPx: 540,
+  textBottomPx: 110,
   noCoverTextLeftPx: 186,
 }
 

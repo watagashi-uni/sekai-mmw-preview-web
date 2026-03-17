@@ -669,10 +669,10 @@ body {
 
 .hud-intro-extra {
   color: rgba(236, 246, 255, 0.92);
-  font-size: 27px;
+  font-size: 31px;
   line-height: 1.1;
   text-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -680,9 +680,9 @@ body {
 
 .hud-intro-title {
   color: #f6fbff;
-  font-size: 38px;
+  font-size: 50px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.16;
   text-shadow: 0 7px 16px rgba(0, 0, 0, 0.42);
   white-space: nowrap;
   overflow: hidden;
@@ -690,9 +690,9 @@ body {
 }
 
 .hud-intro-meta {
-  margin-top: 8px;
+  margin-top: 10px;
   color: rgba(231, 241, 252, 0.9);
-  font-size: 27px;
+  font-size: 32px;
   line-height: 1.12;
   text-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
