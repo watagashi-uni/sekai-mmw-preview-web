@@ -1086,10 +1086,14 @@ function formatScoreValue(value: number) {
   return String(Math.max(0, Math.round(value))).padStart(8, ' ').replace(/ /g, 'n')
 }
 
+function toAssetUrl(path: string) {
+  return encodeURI(path)
+}
+
 function createHudImage(path: string, className: string) {
   const image = document.createElement('img')
   image.className = className
-  image.src = path
+  image.src = toAssetUrl(path)
   image.alt = ''
   return image
 }
@@ -1247,8 +1251,8 @@ function setRankSprites(rank: HudRuntimeState['rank']) {
     return
   }
   lastHudRank = rank
-  hudScoreRankTxt.src = `/assets/mmw/overlay/score/rank/txt/en/${rank}.png`
-  hudScoreRankChar.src = `/assets/mmw/overlay/score/rank/chr/${rank}.png`
+  hudScoreRankTxt.src = toAssetUrl(`/assets/mmw/overlay/score/rank/txt/en/${rank}.png`)
+  hudScoreRankChar.src = toAssetUrl(`/assets/mmw/overlay/score/rank/chr/${rank}.png`)
 }
 
 function upperBoundNumber(values: readonly number[], target: number) {
@@ -1343,7 +1347,7 @@ function setHudCover(url: string | null) {
   hudIntroCoverShell.hidden = false
   hudIntroCover.hidden = false
   hudIntroCard.classList.remove('no-cover')
-  hudIntroCover.src = url
+  hudIntroCover.src = toAssetUrl(url)
 }
 
 function sanitizeIntroText(value: string | null | undefined) {

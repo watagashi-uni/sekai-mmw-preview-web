@@ -1,4 +1,5 @@
 import './site.css'
+import { setupPwaUpdatePrompt } from './lib/pwa'
 
 type LocalBootPayload = {
   susFile: File
@@ -25,6 +26,8 @@ if (!appRoot) {
   throw new Error('Missing app root.')
 }
 const app: HTMLDivElement = appRoot
+
+setupPwaUpdatePrompt()
 
 function normalizePath(pathname: string) {
   if (pathname.endsWith('/') && pathname !== '/') {

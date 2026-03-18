@@ -9,10 +9,11 @@
     "build:wasm": "node ./scripts/build-wasm.mjs",
     "dev": "npm run sync:mmw && npm run build:wasm && vite",
     "build": "npm run sync:mmw && npm run build:wasm && vite build",
-    "preview": "vite preview"
+    "preview": "npm run build && vite preview"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
-    "vite": "^7.1.5"
+    "vite": "^7.1.5",
+    "vite-plugin-pwa": "^1.2.0"
   }
 }
