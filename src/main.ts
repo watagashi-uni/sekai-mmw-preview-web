@@ -56,6 +56,7 @@ app.innerHTML = `
             <img class="hud-score-rank-txt" id="hud-score-rank-txt" src="/assets/mmw/overlay/score/rank/txt/en/d.png" alt="" />
             <img class="hud-score-rank-char" id="hud-score-rank-char" src="/assets/mmw/overlay/score/rank/chr/d.png" alt="" />
             <div class="hud-score-digits" id="hud-score-digits"></div>
+            <div class="hud-score-plus" id="hud-score-plus" hidden></div>
           </div>
           <div class="hud-life-root" id="hud-life-root">
             <img class="hud-life-bg" src="/assets/mmw/overlay/life/v3/bg.png" alt="" />
@@ -69,6 +70,7 @@ app.innerHTML = `
             <div class="hud-combo-digits" id="hud-combo-digits"></div>
           </div>
           <div class="hud-judge-layer" id="hud-judge-layer" hidden></div>
+          <img class="hud-auto-badge" id="hud-auto-badge" src="/assets/mmw/overlay/autolive.png" alt="" hidden />
           <div class="hud-intro-card" id="hud-intro-card" hidden>
             <div class="hud-intro-bg">
               <canvas class="hud-intro-bg-canvas" id="hud-intro-bg-canvas"></canvas>
@@ -137,6 +139,11 @@ app.innerHTML = `
           <button id="note-speed-plus-point-one-button" type="button" class="secondary note-speed-step" aria-label="提高 noteSpeed 0.1">+0.1</button>
           <button id="note-speed-plus-one-button" type="button" class="secondary note-speed-step" aria-label="提高 noteSpeed 1">+1</button>
         </label>
+        <label class="background-brightness" aria-label="backgroundBrightness">
+          背景亮度
+          <input id="background-brightness-input" type="range" min="60" max="100" step="1" value="100" />
+          <output id="background-brightness-output">100%</output>
+        </label>
       </div>
       <div class="controls-row controls-row-toggle">
         <label class="toggle-control">
@@ -154,6 +161,68 @@ app.innerHTML = `
         <div class="ios-hint" id="ios-hint" hidden>iPad 请用网页全屏</div>
       </div>
       <div class="warning-text" id="warning-text"></div>
+      <div class="local-loader-panel" id="local-loader-panel" hidden>
+        <div class="local-loader-title">本地预览模式</div>
+        <div class="local-loader-text">未检测到 URL 参数。上传本地文件并填写参数后，点击加载即可预览。</div>
+        <form class="local-loader-form" id="local-loader-form">
+          <table class="local-loader-table">
+            <tbody>
+              <tr>
+                <th><label for="local-sus-input">SUS 谱面</label></th>
+                <td><input id="local-sus-input" type="file" accept=".sus,text/plain" required /></td>
+              </tr>
+              <tr>
+                <th><label for="local-bgm-input">BGM（可选）</label></th>
+                <td><input id="local-bgm-input" type="file" accept="audio/*,.mp3,.ogg,.wav,.m4a,.aac,.flac" /></td>
+              </tr>
+              <tr>
+                <th><label for="local-cover-input">曲绘（可选）</label></th>
+                <td><input id="local-cover-input" type="file" accept="image/*" /></td>
+              </tr>
+              <tr>
+                <th><label for="local-offset-input">offset（ms）</label></th>
+                <td><input id="local-offset-input" type="text" inputmode="decimal" placeholder="例如 9000" /></td>
+              </tr>
+              <tr>
+                <th><label for="local-difficulty-input">难度</label></th>
+                <td><input id="local-difficulty-input" type="text" placeholder="0-6 或 EASY/NORMAL/..." /></td>
+              </tr>
+              <tr>
+                <th><label for="local-title-input">曲名</label></th>
+                <td><input id="local-title-input" type="text" /></td>
+              </tr>
+              <tr>
+                <th><label for="local-lyricist-input">作词</label></th>
+                <td><input id="local-lyricist-input" type="text" /></td>
+              </tr>
+              <tr>
+                <th><label for="local-composer-input">作曲</label></th>
+                <td><input id="local-composer-input" type="text" /></td>
+              </tr>
+              <tr>
+                <th><label for="local-arranger-input">编曲</label></th>
+                <td><input id="local-arranger-input" type="text" /></td>
+              </tr>
+              <tr>
+                <th><label for="local-vocal-input">演唱</label></th>
+                <td><input id="local-vocal-input" type="text" /></td>
+              </tr>
+              <tr>
+                <th>全屏锁屏组件</th>
+                <td>
+                  <label class="local-lock-toggle">
+                    <input id="local-show-lock-input" type="checkbox" checked />
+                    是否显示锁屏组件
+                  </label>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="local-loader-actions">
+            <button id="local-loader-submit" type="submit">加载本地预览</button>
+          </div>
+        </form>
+      </div>
       <div class="attribution-line">
         Adapted from <a href="https://github.com/crash5band/MikuMikuWorld" target="_blank" rel="noreferrer">MikuMikuWorld</a> by Crash5b (MIT). Ported to browser by watagashi-uni. Project: <a href="https://github.com/watagashi-uni/sekai-mmw-preview-web" target="_blank" rel="noreferrer">sekai-mmw-preview-web</a>.
       </div>
@@ -176,11 +245,13 @@ const hudScoreBarClip = app.querySelector<HTMLDivElement>('#hud-score-bar-clip')
 const hudScoreRankTxt = app.querySelector<HTMLImageElement>('#hud-score-rank-txt')!
 const hudScoreRankChar = app.querySelector<HTMLImageElement>('#hud-score-rank-char')!
 const hudScoreDigits = app.querySelector<HTMLDivElement>('#hud-score-digits')!
+const hudScorePlus = app.querySelector<HTMLDivElement>('#hud-score-plus')!
 const hudLifeFillClip = app.querySelector<HTMLDivElement>('#hud-life-fill-clip')!
 const hudLifeDigits = app.querySelector<HTMLDivElement>('#hud-life-digits')!
 const hudComboRoot = app.querySelector<HTMLDivElement>('#hud-combo-root')!
 const hudComboDigits = app.querySelector<HTMLDivElement>('#hud-combo-digits')!
 const hudJudgeLayer = app.querySelector<HTMLDivElement>('#hud-judge-layer')!
+const hudAutoBadge = app.querySelector<HTMLImageElement>('#hud-auto-badge')!
 const hudIntroCard = app.querySelector<HTMLDivElement>('#hud-intro-card')!
 const hudIntroBgCanvas = app.querySelector<HTMLCanvasElement>('#hud-intro-bg-canvas')!
 const hudIntroCoverShell = app.querySelector<HTMLDivElement>('#hud-intro-cover-shell')!
@@ -205,6 +276,8 @@ const fullscreenToggle = app.querySelector<HTMLButtonElement>('#fullscreen-toggl
 const progressInput = app.querySelector<HTMLInputElement>('#progress-input')!
 const speedSelect = app.querySelector<HTMLSelectElement>('#speed-select')!
 const noteSpeedOutput = app.querySelector<HTMLOutputElement>('#note-speed-output')!
+const backgroundBrightnessInput = app.querySelector<HTMLInputElement>('#background-brightness-input')!
+const backgroundBrightnessOutput = app.querySelector<HTMLOutputElement>('#background-brightness-output')!
 const noteSpeedMinusOneButton = app.querySelector<HTMLButtonElement>('#note-speed-minus-one-button')!
 const noteSpeedMinusPointOneButton = app.querySelector<HTMLButtonElement>('#note-speed-minus-point-one-button')!
 const noteSpeedPlusPointOneButton = app.querySelector<HTMLButtonElement>('#note-speed-plus-point-one-button')!
@@ -214,6 +287,20 @@ const lowResolutionInput = app.querySelector<HTMLInputElement>('#low-resolution-
 const timeReadout = app.querySelector<HTMLDivElement>('#time-readout')!
 const warningText = app.querySelector<HTMLDivElement>('#warning-text')!
 const iosHint = app.querySelector<HTMLDivElement>('#ios-hint')!
+const localLoaderPanel = app.querySelector<HTMLDivElement>('#local-loader-panel')!
+const localLoaderForm = app.querySelector<HTMLFormElement>('#local-loader-form')!
+const localSusInput = app.querySelector<HTMLInputElement>('#local-sus-input')!
+const localBgmInput = app.querySelector<HTMLInputElement>('#local-bgm-input')!
+const localCoverInput = app.querySelector<HTMLInputElement>('#local-cover-input')!
+const localOffsetInput = app.querySelector<HTMLInputElement>('#local-offset-input')!
+const localDifficultyInput = app.querySelector<HTMLInputElement>('#local-difficulty-input')!
+const localTitleInput = app.querySelector<HTMLInputElement>('#local-title-input')!
+const localLyricistInput = app.querySelector<HTMLInputElement>('#local-lyricist-input')!
+const localComposerInput = app.querySelector<HTMLInputElement>('#local-composer-input')!
+const localArrangerInput = app.querySelector<HTMLInputElement>('#local-arranger-input')!
+const localVocalInput = app.querySelector<HTMLInputElement>('#local-vocal-input')!
+const localShowLockInput = app.querySelector<HTMLInputElement>('#local-show-lock-input')!
+const localLoaderSubmit = app.querySelector<HTMLButtonElement>('#local-loader-submit')!
 
 const transport = new AudioTransport()
 const wasm = new MmwWasmPreview()
@@ -266,6 +353,9 @@ let introMetadata: IntroCardMetadata = {
 let hudJudgeTimes: number[] = []
 let hudComboTimes: number[] = []
 let lastHudScoreText = ''
+let lastHudScorePlusText = ''
+let lastHudScorePlusEventIndex = -1
+let lastHudScoreForPlusTrigger = 0
 let lastHudComboText = ''
 let lastHudLifeText = ''
 let lastHudRank: HudRuntimeState['rank'] = 'd'
@@ -283,7 +373,9 @@ const MAX_RENDER_HEIGHT = 720
 const LOW_RENDER_WIDTH = 960
 const LOW_RENDER_HEIGHT = 540
 const UI_REFRESH_INTERVAL_MS = 50
-const HUD_INTRO_DURATION_SEC = 5
+const HUD_INTRO_DURATION_SEC = 4
+const INTRO_CLEAN_BG_DURATION_SEC = 1
+const INTRO_PLAYFIELD_FADE_IN_SEC = 0.62
 const MIN_CHART_LEAD_IN_SEC = 9
 const JUDGE_ANIMATION_TOTAL_FRAMES = 20
 const JUDGE_ANIMATION_FPS = 60
@@ -291,12 +383,17 @@ const FIXED_BACKGROUND_URL = '/assets/mmw/background_overlay.png'
 const COMBO_DIGIT_STEP = 92
 const COMBO_BASE_SCALE = 0.85
 const LIFE_MAX_VALUE = 1000
+const SCORE_BAR_FULL_WIDTH = 354
+const SCORE_PLUS_VISIBLE_SEC = 0.5
+const SCORE_PLUS_FLOAT_PX = 2
+const SCORE_PLUS_SLIDE_IN_PX = 32
 const CONTROLS_AUTO_HIDE_MS = 3000
 let lastUiRefreshMs = 0
 let isFullscreen = false
 let isNativeFullscreen = false
 let controlsVisible = true
 let controlsLocked = false
+let showLockControlsButton = true
 let controlsHideTimer: number | null = null
 let isIOS = false
 let isIPad = false
@@ -304,12 +401,14 @@ let lowResolutionEnabled = false
 let iosTouchGuardsCleanup: (() => void) | null = null
 let hudJudgeImage: HTMLImageElement | null = null
 let backgroundObjectUrl: string | null = null
+let localCoverObjectUrl: string | null = null
 let backgroundApplySequence = 0
 let chartPlayableEndSec = Number.POSITIVE_INFINITY
 let apSequenceTriggered = false
 let apPlaybackActive = false
 let apStartDelayTimer: number | null = null
 let apLastDrawMs = 0
+let scorePlusTriggerChartSec = Number.NEGATIVE_INFINITY
 const AP_VIDEO_URL = '/assets/mmw/overlay/ap.mp4'
 const AP_START_DELAY_MS = 1000
 const AP_DRAW_INTERVAL_MS = 1000 / 30
@@ -329,6 +428,9 @@ const INTRO_GRAD_END_Y = 0
 const INTRO_GRAD_START_SEC = 1
 const INTRO_GRAD_DURATION_SEC = 2
 const INTRO_GRAD_ALPHA = 0.1
+const AUTO_BADGE_SHOW_AFTER_SEC = HUD_INTRO_DURATION_SEC + INTRO_CLEAN_BG_DURATION_SEC + INTRO_PLAYFIELD_FADE_IN_SEC
+const AUTO_BADGE_ANIM_PERIOD_SEC = 1.25
+const AUTO_BADGE_ANIM_SPAN = 1.2
 
 type WebkitFullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null
@@ -619,18 +721,23 @@ function syncBodyScrollLock() {
   document.documentElement.style.overscrollBehavior = lockScroll ? 'none' : ''
 }
 
+function isRecordingControlsMode() {
+  return isFullscreen && !showLockControlsButton
+}
+
 function applyFullscreenUi() {
+  const recordingControlsMode = isRecordingControlsMode()
   appShell.classList.toggle('fullscreen-mode', isFullscreen)
   appShell.classList.toggle('pseudo-fullscreen-mode', isFullscreen && !isNativeFullscreen)
-  exitFullscreenButton.hidden = !isFullscreen
-  lockControlsButton.hidden = !isFullscreen
+  exitFullscreenButton.hidden = !isFullscreen || recordingControlsMode
+  lockControlsButton.hidden = !isFullscreen || !showLockControlsButton
   webFullscreenToggle.hidden = !isIOS || isFullscreen
   iosHint.hidden = !isIPad || isFullscreen
   exitFullscreenButton.innerHTML = ICON_EXIT_FULLSCREEN
   lockControlsButton.innerHTML = controlsLocked ? ICON_LOCKED : ICON_UNLOCKED
   lockControlsButton.title = controlsLocked ? '解锁控制栏' : '锁定控制栏'
   lockControlsButton.setAttribute('aria-label', controlsLocked ? '解锁控制栏' : '锁定控制栏')
-  const shouldHideControls = isFullscreen && (controlsLocked || !controlsVisible)
+  const shouldHideControls = isFullscreen && (recordingControlsMode ? !controlsVisible : (controlsLocked || !controlsVisible))
   controlsPanel.classList.toggle('hidden-controls', shouldHideControls)
   const fullscreenLabel = isFullscreen ? '退出全屏' : isIOS ? '系统全屏' : '全屏'
   const fullscreenIcon = isFullscreen ? ICON_EXIT_FULLSCREEN : ICON_ENTER_FULLSCREEN
@@ -682,11 +789,14 @@ function exitPseudoFullscreen() {
 function enterWebFullscreen() {
   isNativeFullscreen = false
   isFullscreen = true
-  controlsVisible = true
+  controlsVisible = showLockControlsButton
   controlsLocked = false
   syncPseudoFullscreenViewport()
   applyFullscreenUi()
-  resetControlsAutoHide()
+  clearControlsHideTimer()
+  if (showLockControlsButton) {
+    resetControlsAutoHide()
+  }
   applyRenderSize()
 }
 
@@ -699,9 +809,12 @@ function syncFullscreenFromBrowser() {
     isNativeFullscreen = true
     isFullscreen = true
     controlsLocked = false
-    controlsVisible = true
+    controlsVisible = showLockControlsButton
     applyFullscreenUi()
-    resetControlsAutoHide()
+    clearControlsHideTimer()
+    if (showLockControlsButton) {
+      resetControlsAutoHide()
+    }
     applyRenderSize()
     return
   }
@@ -742,10 +855,13 @@ async function enterFullscreen() {
     // Ignore unsupported orientation lock.
   }
 
-  controlsVisible = true
+  controlsVisible = showLockControlsButton
   controlsLocked = false
   applyFullscreenUi()
-  resetControlsAutoHide()
+  clearControlsHideTimer()
+  if (showLockControlsButton) {
+    resetControlsAutoHide()
+  }
   applyRenderSize()
 }
 
@@ -773,8 +889,11 @@ async function exitFullscreen() {
   applyRenderSize()
 }
 
-function onFullscreenInteraction() {
+function onFullscreenInteraction(event: Event) {
   if (!isFullscreen) {
+    return
+  }
+  if (isRecordingControlsMode() && event.type === 'mousemove') {
     return
   }
   resetControlsAutoHide()
@@ -819,6 +938,29 @@ function revokeBackgroundObjectUrl() {
   }
   URL.revokeObjectURL(backgroundObjectUrl)
   backgroundObjectUrl = null
+}
+
+function revokeLocalCoverObjectUrl() {
+  if (!localCoverObjectUrl) {
+    return
+  }
+  URL.revokeObjectURL(localCoverObjectUrl)
+  localCoverObjectUrl = null
+}
+
+function setLockControlsButtonVisibility(visible: boolean) {
+  showLockControlsButton = visible
+  if (!showLockControlsButton) {
+    controlsLocked = false
+    controlsVisible = false
+    clearControlsHideTimer()
+  } else if (isFullscreen) {
+    controlsVisible = true
+  }
+  applyFullscreenUi()
+  if (isFullscreen && showLockControlsButton) {
+    resetControlsAutoHide()
+  }
 }
 
 async function composeBackgroundWithCover(cover: string) {
@@ -878,7 +1020,7 @@ async function applyBackground(cover: string | null) {
 }
 
 function formatScoreValue(value: number) {
-  return String(Math.max(0, Math.round(value))).padStart(8, '0')
+  return String(Math.max(0, Math.round(value))).padStart(8, ' ').replace(/ /g, 'n')
 }
 
 function createHudImage(path: string, className: string) {
@@ -907,6 +1049,74 @@ function setScoreDigits(score: number) {
     fragment.append(stack)
   }
   hudScoreDigits.replaceChildren(fragment)
+}
+
+function setScorePlusDigits(scoreDelta: number) {
+  const text = `+${Math.max(0, Math.round(scoreDelta))}`
+  if (text === lastHudScorePlusText) {
+    return
+  }
+  lastHudScorePlusText = text
+
+  const fragment = document.createDocumentFragment()
+  for (const char of text) {
+    const stack = document.createElement('span')
+    stack.className = 'hud-score-plus-stack'
+    if (char === '+') {
+      stack.classList.add('hud-score-plus-stack-sign')
+    }
+
+    const key = char === '+' ? '+' : char
+    stack.append(
+      createHudImage(`/assets/mmw/overlay/score/digit/s${key}.png`, 'hud-score-plus-shadow'),
+      createHudImage(`/assets/mmw/overlay/score/digit/${key}.png`, 'hud-score-plus-main'),
+    )
+    fragment.append(stack)
+  }
+  hudScorePlus.replaceChildren(fragment)
+}
+
+function hideScorePlus() {
+  hudScorePlus.hidden = true
+  hudScorePlus.style.opacity = '0'
+  hudScorePlus.style.transform = `translate(${(-SCORE_PLUS_SLIDE_IN_PX).toFixed(2)}px, 0px)`
+}
+
+function triggerScorePlus(scoreDelta: number, eventIndex: number, chartTimeSec: number) {
+  setScorePlusDigits(scoreDelta)
+  lastHudScorePlusEventIndex = eventIndex
+  scorePlusTriggerChartSec = chartTimeSec
+  hudScorePlus.hidden = false
+}
+
+function updateScorePlusAnimation(chartTimeSec: number, transportState: TransportState, hidden: boolean) {
+  if (
+    hidden ||
+    transportState !== 'playing' ||
+    !Number.isFinite(scorePlusTriggerChartSec)
+  ) {
+    hideScorePlus()
+    return
+  }
+
+  const elapsed = chartTimeSec - scorePlusTriggerChartSec
+  if (elapsed < 0 || elapsed > SCORE_PLUS_VISIBLE_SEC) {
+    hideScorePlus()
+    return
+  }
+
+  const progress = Math.min(1, Math.max(0, elapsed / SCORE_PLUS_VISIBLE_SEC))
+  const entryProgress = Math.min(1, progress / 0.42)
+  const eased = 1 - (0.9 ** (entryProgress * 12))
+  const fadeStart = 0.88
+  const baseAlpha = Math.min(1, 1.3 * eased)
+  const alpha = progress <= fadeStart ? baseAlpha : Math.max(0, baseAlpha * (1 - (progress - fadeStart) / (1 - fadeStart)))
+  const offsetX = -SCORE_PLUS_SLIDE_IN_PX * (1 - eased)
+  const offsetY = -SCORE_PLUS_FLOAT_PX * eased
+
+  hudScorePlus.hidden = false
+  hudScorePlus.style.opacity = alpha.toFixed(3)
+  hudScorePlus.style.transform = `translate(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px)`
 }
 
 function setLifeDigits(lifeRatio: number) {
@@ -1120,6 +1330,20 @@ function renderIntroBackdrop(currentTimeSec: number) {
 function normalizeDifficulty(value: string) {
   const normalized = value.trim().toUpperCase().replace(/\s+/g, '')
   switch (normalized) {
+    case '0':
+      return 'EASY'
+    case '1':
+      return 'NORMAL'
+    case '2':
+      return 'HARD'
+    case '3':
+      return 'EXPERT'
+    case '4':
+      return 'MASTER'
+    case '5':
+      return 'APPEND'
+    case '6':
+      return 'ETERNAL'
     case 'EASY':
     case 'NORMAL':
     case 'HARD':
@@ -1131,6 +1355,23 @@ function normalizeDifficulty(value: string) {
     default:
       return value.trim()
   }
+}
+
+function inferDifficultyFromSusUrl(susUrl: string) {
+  let decoded = susUrl
+  try {
+    decoded = decodeURIComponent(susUrl)
+  } catch {
+    // Keep original string when decode fails.
+  }
+  const normalized = decoded.toUpperCase()
+  const orderedCandidates = ['ETERNAL', 'APPEND', 'MASTER', 'EXPERT', 'HARD', 'NORMAL', 'EASY'] as const
+  for (const candidate of orderedCandidates) {
+    if (normalized.includes(candidate)) {
+      return candidate
+    }
+  }
+  return ''
 }
 
 function difficultyTheme(value: string) {
@@ -1161,12 +1402,12 @@ function resolveIntroMetadata(params: UrlPreviewParams, metadata: SongMetadata):
   const composer = sanitizeIntroText(params.composer) || sanitizeIntroText(metadata.artist) || '-'
   const arranger = sanitizeIntroText(params.arranger) || '-'
   const vocal = sanitizeIntroText(params.vocal) || '-'
-  const difficultyText = sanitizeIntroText(params.difficulty)
+  const difficultyText = sanitizeIntroText(params.difficulty) || inferDifficultyFromSusUrl(params.sus)
 
   return {
     title,
     description1:
-      sanitizeIntroText(params.description1) || `作詞：${lyricist}    作曲：${composer}    編曲：${arranger}`,
+      sanitizeIntroText(params.description1) || `作詞：${lyricist}　作曲：${composer}　編曲：${arranger}`,
     description2: sanitizeIntroText(params.description2) || `Vo. ${vocal}`,
     extra: sanitizeIntroText(params.extra),
     difficulty: difficultyText ? normalizeDifficulty(difficultyText) : '',
@@ -1211,6 +1452,27 @@ function isIntroVisible(currentTimeSec: number, transportState: TransportState) 
   return hasIntroCardContent() && transportState === 'playing' && currentTimeSec >= 0 && currentTimeSec < HUD_INTRO_DURATION_SEC
 }
 
+function getPlayfieldVisibility(currentTimeSec: number, transportState: TransportState) {
+  if (!hasIntroCardContent() || transportState !== 'playing' || currentTimeSec < 0) {
+    return 1
+  }
+  const revealStartSec = HUD_INTRO_DURATION_SEC + INTRO_CLEAN_BG_DURATION_SEC
+  if (currentTimeSec < revealStartSec) {
+    return 0
+  }
+  return Math.min(1, Math.max(0, (currentTimeSec - revealStartSec) / INTRO_PLAYFIELD_FADE_IN_SEC))
+}
+
+function applyPlayfieldVisibility(visibility: number) {
+  const alpha = Math.min(1, Math.max(0, visibility))
+  const alphaText = alpha.toFixed(3)
+  effectsCanvas.style.opacity = alphaText
+  hudScoreRoot.style.opacity = alphaText
+  hudLifeRoot.style.opacity = alphaText
+  hudComboRoot.style.opacity = alphaText
+  hudJudgeLayer.style.opacity = alphaText
+}
+
 function updateTimingAlignment() {
   sourceOffsetSec = -normalizedOffsetMs / 1000
   chartLeadInSec = Math.max(sourceOffsetSec, MIN_CHART_LEAD_IN_SEC)
@@ -1227,33 +1489,66 @@ function renderHud(
   currentTimeSec: number,
   transportState: TransportState,
   chartTimeSec: number,
+  playfieldVisibility: number,
 ) {
   hudLayer.hidden = !previewReady
   if (!previewReady) {
     previewPanel.classList.remove('intro-active')
+    applyPlayfieldVisibility(1)
+    lastHudScoreForPlusTrigger = 0
+    hideScorePlus()
+    hudAutoBadge.hidden = true
     return
   }
 
   const hasIntroContent = hasIntroCardContent()
   const introVisible = isIntroVisible(currentTimeSec, transportState)
+  const hudSuppressed = introVisible || playfieldVisibility <= 0.001
+  applyPlayfieldVisibility(playfieldVisibility)
   if (introVisible) {
     renderIntroBackdrop(currentTimeSec)
   }
   previewPanel.classList.toggle('intro-active', introVisible)
   hudScoreRoot.hidden = false
   hudLifeRoot.hidden = false
-  hudComboRoot.hidden = introVisible || state.combo <= 0
+  hudComboRoot.hidden = hudSuppressed || state.combo <= 0
+  hudAutoBadge.hidden = false
+  if (currentTimeSec < AUTO_BADGE_SHOW_AFTER_SEC) {
+    hudAutoBadge.style.opacity = '0'
+  } else {
+    const phase = ((currentTimeSec - AUTO_BADGE_SHOW_AFTER_SEC) / AUTO_BADGE_ANIM_PERIOD_SEC) % AUTO_BADGE_ANIM_SPAN
+    const alpha = Math.max(0, Math.sin(phase * Math.PI))
+    hudAutoBadge.style.opacity = alpha.toFixed(3)
+  }
   hudIntroCard.hidden = !hasIntroContent
   hudIntroCard.classList.toggle('visible', introVisible)
 
   setRankSprites(state.rank)
   setScoreDigits(state.score)
+  if (
+    transportState !== 'playing' ||
+    chartTimeSec < previousTimeSec - 0.001 ||
+    chartTimeSec - previousTimeSec > 0.25
+  ) {
+    lastHudScoreForPlusTrigger = state.score
+  }
+  const scoreIncrease = Math.max(0, state.score - lastHudScoreForPlusTrigger)
+  if (
+    !hudSuppressed &&
+    transportState === 'playing' &&
+    scoreIncrease > 0
+  ) {
+    const eventIndex = Math.max(state.latestScoreEventIndex, lastHudScorePlusEventIndex + 1)
+    triggerScorePlus(scoreIncrease, eventIndex, chartTimeSec)
+  }
+  lastHudScoreForPlusTrigger = state.score
+  updateScorePlusAnimation(chartTimeSec, transportState, hudSuppressed)
   setLifeDigits(state.lifeRatio)
   setComboDigits(state.combo)
-  updateComboAnimation(chartTimeSec, state.combo, introVisible)
-  hudScoreBarClip.style.width = `${Math.min(100, Math.max(0, state.scoreBarRatio * 100))}%`
+  updateComboAnimation(chartTimeSec, state.combo, hudSuppressed)
+  hudScoreBarClip.style.width = `${Math.round(SCORE_BAR_FULL_WIDTH * Math.min(1, Math.max(0, state.scoreBarRatio)))}px`
   hudLifeFillClip.style.width = `${Math.min(100, Math.max(0, state.lifeRatio * 100))}%`
-  renderJudgeBursts(chartTimeSec, introVisible)
+  renderJudgeBursts(chartTimeSec, hudSuppressed)
 }
 
 async function fetchText(url: string) {
@@ -1278,6 +1573,32 @@ async function fetchArrayBuffer(url: string, timeoutMs: number) {
   }
 }
 
+function readOptionalTextInput(input: HTMLInputElement) {
+  const trimmed = input.value.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+function readOptionalOffsetMsInput(input: HTMLInputElement) {
+  const trimmed = input.value.trim()
+  if (trimmed === '') {
+    return null
+  }
+  const parsed = Number.parseFloat(trimmed)
+  if (!Number.isFinite(parsed)) {
+    throw new Error('offset 必须是数字（毫秒）。')
+  }
+  return parsed
+}
+
+function setLocalLoaderVisible(visible: boolean) {
+  localLoaderPanel.hidden = !visible
+}
+
+function setLocalLoaderBusy(busy: boolean) {
+  localLoaderSubmit.disabled = busy
+  localLoaderSubmit.textContent = busy ? '正在加载…' : '加载本地预览'
+}
+
 function updateUi() {
   const snapshot = transport.getSnapshot()
   const currentTimeSec = snapshot.currentTimeSec
@@ -1295,10 +1616,197 @@ function updateUi() {
     playToggle.title = playLabel
     playToggle.dataset.state = playState
   }
-  playToggle.disabled = bgmLoading
+  playToggle.disabled = bgmLoading || !previewReady
   unlockLayer.hidden = !snapshot.requiresGesture
   bgmLoadingLayer.hidden = !bgmLoading
   warningText.textContent = warningMessage
+}
+
+async function loadPreparedPreview(
+  params: UrlPreviewParams,
+  susText: string,
+  bgmDataPromise: Promise<ArrayBuffer | null> | null,
+) {
+  transport.pause()
+  transport.seek(0)
+  await transport.setAudioData(null)
+  stopApPlayback(true)
+  hideScorePlus()
+  effects.reset()
+  judgementSounds.stopAll()
+  previewReady = false
+  hudLayer.hidden = true
+  previewPanel.classList.remove('intro-active')
+  applyPlayfieldVisibility(1)
+
+  coverUrl = params.cover
+  void applyBackground(coverUrl).catch(() => {
+    // Ignore background texture failures and keep default background.
+  })
+  bgmExpected = !!bgmDataPromise
+  bgmLoaded = !bgmDataPromise
+  bgmLoadingActive = false
+  warningMessage = ''
+
+  normalizedOffsetMs = normalizeOffsetMs(params.rawOffsetMs, susText)
+  updateTimingAlignment()
+
+  wasm.loadSusText(susText, -chartLeadInSec * 1000)
+  wasm.setPreviewConfig(currentConfig)
+  songMetadata = wasm.getSongMetadata()
+  introMetadata = resolveIntroMetadata(params, songMetadata)
+  applyHudMetadata()
+  hitEvents = wasm.getHitEvents().map((event) => ({
+    ...event,
+    timeSec: event.timeSec,
+    endTimeSec:
+      event.endTimeSec === undefined
+        ? undefined
+        : event.endTimeSec,
+  }))
+  hudEvents = wasm.getHudEvents().map((event) => ({
+    ...event,
+    timeSec: event.timeSec,
+  }))
+  hudJudgeTimes = hudEvents
+    .filter((event) => event.showJudge)
+    .map((event) => event.timeSec)
+    .sort((left, right) => left - right)
+  hudComboTimes = hudEvents.map((event) => event.timeSec).sort((left, right) => left - right)
+  hudTimeline = new HudTimeline(hudEvents)
+  lastHudScoreText = ''
+  lastHudScorePlusText = ''
+  lastHudScorePlusEventIndex = -1
+  lastHudScoreForPlusTrigger = 0
+  scorePlusTriggerChartSec = Number.NEGATIVE_INFINITY
+  lastHudComboText = ''
+  lastHudLifeText = ''
+  lastHudRank = 'd'
+  nextHitEventIndex = 0
+
+  const chartEndTimeSec = wasm.getChartEndTimeSec()
+  chartPlayableEndSec = Math.max(0, chartEndTimeSec)
+  const minimumDurationSec = Math.max(chartEndTimeSec + chartLeadInSec + 1, 1)
+  transport.setDuration(minimumDurationSec)
+  transport.setReady()
+  transport.seek(0)
+  previousTimeSec = toChartTimeSec(0)
+  nextHitEventIndex = lowerBoundHitEvent(previousTimeSec)
+  stopApPlayback(true)
+
+  previewReady = true
+  clearStatus()
+  updateUi()
+
+  if (!bgmDataPromise) {
+    return
+  }
+
+  bgmLoadingActive = true
+  warningMessage = '正在加载 BGM…'
+  updateUi()
+  void (async () => {
+    try {
+      const bgmData = await bgmDataPromise
+      if (!bgmData) {
+        throw new Error('Failed to load BGM: empty response')
+      }
+      await Promise.race([
+        transport.setAudioData(bgmData),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error('BGM decode timeout.')), BGM_DECODE_TIMEOUT_MS)
+        }),
+      ])
+      transport.setDuration(Math.max(transport.getSnapshot().durationSec, minimumDurationSec))
+      bgmLoaded = true
+      bgmLoadingActive = false
+      warningMessage = ''
+    } catch (error) {
+      bgmExpected = false
+      bgmLoaded = false
+      bgmLoadingActive = false
+      warningMessage =
+        error instanceof Error
+          ? `${error.message}，已切换为静音预览。`
+          : 'BGM 加载失败，已切换为静音预览。'
+    }
+    updateUi()
+  })()
+}
+
+async function loadPreviewFromUrlParams(params: UrlPreviewParams) {
+  revokeLocalCoverObjectUrl()
+  const susTextPromise = fetchText(params.sus)
+  const bgmDataPromise = params.bgm
+    ? fetchArrayBuffer(params.bgm, BGM_FETCH_TIMEOUT_MS)
+    : null
+  const susText = await susTextPromise
+  await loadPreparedPreview(params, susText, bgmDataPromise)
+}
+
+async function handleLocalLoaderSubmit(event: SubmitEvent) {
+  event.preventDefault()
+  if (bgmLoadingActive) {
+    warningMessage = '当前 BGM 仍在加载中，请稍后再加载新的谱面。'
+    updateUi()
+    return
+  }
+
+  const susFile = localSusInput.files?.[0]
+  if (!susFile) {
+    setStatus('缺少 SUS 文件', '请选择本地 SUS 谱面文件。')
+    return
+  }
+
+  setLocalLoaderBusy(true)
+  try {
+    setStatus('正在读取本地文件', '读取 SUS/BGM 并初始化预览中。')
+    const bgmFile = localBgmInput.files?.[0] ?? null
+    const coverFile = localCoverInput.files?.[0] ?? null
+    const [susText, bgmData] = await Promise.all([
+      susFile.text(),
+      bgmFile ? bgmFile.arrayBuffer() : Promise.resolve<ArrayBuffer | null>(null),
+    ])
+    const rawOffsetMs = readOptionalOffsetMsInput(localOffsetInput)
+
+    revokeLocalCoverObjectUrl()
+    const cover = coverFile ? URL.createObjectURL(coverFile) : null
+    localCoverObjectUrl = cover
+
+    const params: UrlPreviewParams = {
+      sus: `local:///${encodeURIComponent(susFile.name || 'chart.sus')}`,
+      bgm: bgmFile ? `local:///${encodeURIComponent(bgmFile.name || 'song')}` : null,
+      cover,
+      rawOffsetMs,
+      title: readOptionalTextInput(localTitleInput),
+      lyricist: readOptionalTextInput(localLyricistInput),
+      composer: readOptionalTextInput(localComposerInput),
+      arranger: readOptionalTextInput(localArrangerInput),
+      vocal: readOptionalTextInput(localVocalInput),
+      difficulty: readOptionalTextInput(localDifficultyInput),
+      description1: null,
+      description2: null,
+      extra: null,
+    }
+    await loadPreparedPreview(params, susText, bgmData ? Promise.resolve(bgmData) : null)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    hudTimeline = null
+    hudEvents = []
+    hudJudgeTimes = []
+    hudComboTimes = []
+    chartPlayableEndSec = Number.POSITIVE_INFINITY
+    stopApPlayback(true)
+    hideScorePlus()
+    lastHudLifeText = ''
+    hudLayer.hidden = true
+    previewPanel.classList.remove('intro-active')
+    setStatus('本地预览加载失败', message)
+    transport.setError()
+    updateUi()
+  } finally {
+    setLocalLoaderBusy(false)
+  }
 }
 
 async function bootstrap() {
@@ -1316,97 +1824,26 @@ async function bootstrap() {
     resizeObserver.observe(previewPanel)
     applyRenderSize()
 
-    setStatus('正在加载谱面', '正在通过 URL 参数拉取 SUS 文件。')
-    const params = parseUrlPreviewParams(new URL(window.location.href))
-    coverUrl = params.cover
-    void applyBackground(coverUrl).catch(() => {
-      // Ignore background texture failures and keep default background.
-    })
-    bgmExpected = !!params.bgm
-    bgmLoaded = !params.bgm
-    const susFetchPromise = fetchText(params.sus)
-    const bgmFetchPromise = params.bgm
-      ? fetchArrayBuffer(params.bgm, BGM_FETCH_TIMEOUT_MS)
-      : Promise.resolve<ArrayBuffer | null>(null)
-    const susText = await susFetchPromise
-    normalizedOffsetMs = normalizeOffsetMs(params.rawOffsetMs, susText)
-    updateTimingAlignment()
-
-    wasm.loadSusText(susText, -chartLeadInSec * 1000)
-    wasm.setPreviewConfig(currentConfig)
-    songMetadata = wasm.getSongMetadata()
-    introMetadata = resolveIntroMetadata(params, songMetadata)
-    applyHudMetadata()
-    hitEvents = wasm.getHitEvents().map((event) => ({
-      ...event,
-      timeSec: event.timeSec,
-      endTimeSec:
-        event.endTimeSec === undefined
-          ? undefined
-          : event.endTimeSec,
-    }))
-    hudEvents = wasm.getHudEvents().map((event) => ({
-      ...event,
-      timeSec: event.timeSec,
-    }))
-    hudJudgeTimes = hudEvents
-      .filter((event) => event.showJudge)
-      .map((event) => event.timeSec)
-      .sort((left, right) => left - right)
-    hudComboTimes = hudEvents.map((event) => event.timeSec).sort((left, right) => left - right)
-    hudTimeline = new HudTimeline(hudEvents)
-    lastHudScoreText = ''
-    lastHudComboText = ''
-    lastHudLifeText = ''
-    lastHudRank = 'd'
-    nextHitEventIndex = 0
-
-    const chartEndTimeSec = wasm.getChartEndTimeSec()
-    chartPlayableEndSec = Math.max(0, chartEndTimeSec)
-    const minimumDurationSec = Math.max(chartEndTimeSec + chartLeadInSec + 1, 1)
-    transport.setDuration(minimumDurationSec)
-    transport.setReady()
-    transport.seek(0)
-    previousTimeSec = toChartTimeSec(0)
-    nextHitEventIndex = lowerBoundHitEvent(previousTimeSec)
-    stopApPlayback(true)
-
-    previewReady = true
-    clearStatus()
-    updateUi()
-
-    if (params.bgm) {
-      bgmLoadingActive = true
-      warningMessage = '正在加载 BGM…'
+    const currentUrl = new URL(window.location.href)
+    if ([...currentUrl.searchParams.keys()].length === 0) {
+      setLocalLoaderVisible(true)
+      revokeLocalCoverObjectUrl()
+      coverUrl = null
+      void applyBackground(null).catch(() => {
+        // Keep default renderer background if generation fails.
+      })
+      previewReady = false
+      clearStatus()
+      warningMessage = '未检测到 URL 参数，请在下方上传本地文件。'
+      transport.setReady()
       updateUi()
-      void (async () => {
-        try {
-          const bgmData = await bgmFetchPromise
-          if (!bgmData) {
-            throw new Error('Failed to load BGM: empty response')
-          }
-          await Promise.race([
-            transport.setAudioData(bgmData),
-            new Promise<never>((_, reject) => {
-              window.setTimeout(() => reject(new Error('BGM decode timeout.')), BGM_DECODE_TIMEOUT_MS)
-            }),
-          ])
-          transport.setDuration(Math.max(transport.getSnapshot().durationSec, minimumDurationSec))
-          bgmLoaded = true
-          bgmLoadingActive = false
-          warningMessage = ''
-        } catch (error) {
-          bgmExpected = false
-          bgmLoaded = false
-          bgmLoadingActive = false
-          warningMessage =
-            error instanceof Error
-              ? `${error.message}，已切换为静音预览。`
-              : 'BGM 加载失败，已切换为静音预览。'
-        }
-        updateUi()
-      })()
+      return
     }
+
+    setLocalLoaderVisible(false)
+    setStatus('正在加载谱面', '正在通过 URL 参数拉取 SUS 文件。')
+    const params = parseUrlPreviewParams(currentUrl)
+    await loadPreviewFromUrlParams(params)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     hudTimeline = null
@@ -1415,6 +1852,7 @@ async function bootstrap() {
     hudComboTimes = []
     chartPlayableEndSec = Number.POSITIVE_INFINITY
     stopApPlayback(true)
+    hideScorePlus()
     lastHudLifeText = ''
     hudLayer.hidden = true
     previewPanel.classList.remove('intro-active')
@@ -1478,6 +1916,10 @@ speedSelect.addEventListener('change', async () => {
   updateUi()
 })
 
+backgroundBrightnessInput.addEventListener('input', () => {
+  applyBackgroundBrightness(Number(backgroundBrightnessInput.value))
+})
+
 function applyNoteSpeed(nextValue: number) {
   const snapped = Math.round(nextValue * 10) / 10
   const clamped = Math.min(12, Math.max(1, snapped))
@@ -1491,6 +1933,20 @@ function applyNoteSpeed(nextValue: number) {
 
 function adjustNoteSpeed(delta: number) {
   applyNoteSpeed(currentConfig.noteSpeed + delta)
+}
+
+function applyBackgroundBrightness(percent: number) {
+  const clampedPercent = Math.min(100, Math.max(60, Math.round(percent)))
+  const normalized = clampedPercent / 100
+  currentConfig = {
+    ...currentConfig,
+    backgroundBrightness: normalized,
+  }
+  backgroundBrightnessInput.value = String(clampedPercent)
+  backgroundBrightnessOutput.value = `${clampedPercent}%`
+  if (rendererReady) {
+    wasm.setPreviewConfig(currentConfig)
+  }
 }
 
 function bindTapAction(element: HTMLElement, handler: () => void) {
@@ -1548,6 +2004,14 @@ lowResolutionInput.addEventListener('change', () => {
     // Ignore storage write failures.
   }
   applyRenderSize()
+})
+
+localLoaderForm.addEventListener('submit', (event) => {
+  void handleLocalLoaderSubmit(event)
+})
+
+localShowLockInput.addEventListener('change', () => {
+  setLockControlsButtonVisibility(localShowLockInput.checked)
 })
 
 unlockButton.addEventListener('click', async () => {
@@ -1717,15 +2181,16 @@ function frameLoop() {
     const snapshot = transport.getSnapshot()
     const currentTimeSec = snapshot.currentTimeSec
     const introVisible = isIntroVisible(currentTimeSec, snapshot.state)
+    const playfieldVisibility = getPlayfieldVisibility(currentTimeSec, snapshot.state)
+    const gameplaySuppressed = playfieldVisibility <= 0.001
     const chartTimeSec = toChartTimeSec(currentTimeSec)
-    const frame = previewReady ? wasm.render(chartTimeSec) : { count: 0, floats: emptyFrame }
-    const renderConfig = introVisible
-      ? {
-          ...currentConfig,
-          stageOpacity: 0,
-        }
-      : currentConfig
-    renderer.render(frame.floats, frame.count, renderConfig)
+    const rawFrame = previewReady ? wasm.render(chartTimeSec) : { count: 0, floats: emptyFrame }
+    const frame = gameplaySuppressed ? { count: 0, floats: emptyFrame } : rawFrame
+    const renderConfig = {
+      ...currentConfig,
+      stageOpacity: currentConfig.stageOpacity * playfieldVisibility,
+    }
+    renderer.render(frame.floats, frame.count, renderConfig, playfieldVisibility)
 
     const reachedChartEnd =
       previewReady &&
@@ -1737,7 +2202,7 @@ function frameLoop() {
     }
 
     if (previewReady) {
-      if (introVisible) {
+      if (gameplaySuppressed) {
         nextHitEventIndex = lowerBoundHitEvent(chartTimeSec)
         effects.reset()
         judgementSounds.stopAll()
@@ -1760,10 +2225,12 @@ function frameLoop() {
     }
 
     if (previewReady && hudTimeline) {
-      renderHud(hudTimeline.snapshotAt(chartTimeSec), currentTimeSec, snapshot.state, chartTimeSec)
+      renderHud(hudTimeline.snapshotAt(chartTimeSec), currentTimeSec, snapshot.state, chartTimeSec, playfieldVisibility)
     } else {
       hudLayer.hidden = true
       previewPanel.classList.remove('intro-active')
+      applyPlayfieldVisibility(1)
+      hideScorePlus()
     }
 
     effects.render(performance.now() / 1000)
@@ -1788,6 +2255,7 @@ requestAnimationFrame(frameLoop)
 isIOS = detectIosDevice()
 isIPad = detectIpadDevice()
 appShell.classList.toggle('ios-device', isIOS)
+showLockControlsButton = localShowLockInput.checked
 try {
   lowResolutionEnabled = window.localStorage.getItem(LOW_RESOLUTION_STORAGE_KEY) === '1'
 } catch {
@@ -1798,9 +2266,10 @@ applyFullscreenUi()
 applyEffectLayerOpacity()
 applyHudMetadata()
 setScoreDigits(0)
+hideScorePlus()
 setLifeDigits(1)
 setComboDigits(0)
-hudScoreBarClip.style.width = '0%'
+hudScoreBarClip.style.width = '0px'
 hudLifeFillClip.style.width = '100%'
 hudIntroBgCanvas.width = INTRO_BG_WIDTH
 hudIntroBgCanvas.height = INTRO_BG_HEIGHT
@@ -1810,6 +2279,7 @@ stopApPlayback(true)
 window.addEventListener('beforeunload', () => {
   stopApPlayback(false)
   revokeBackgroundObjectUrl()
+  revokeLocalCoverObjectUrl()
 })
 updateUi()
 void bootstrap()

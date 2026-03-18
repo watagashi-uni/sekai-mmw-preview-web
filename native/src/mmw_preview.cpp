@@ -1217,7 +1217,7 @@ namespace mmw_preview
                     HudEventKind::HoldHalfBeat,
                     holdStart.critical,
                     true,
-                    false);
+                    true);
             }
         }
 

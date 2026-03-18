@@ -3,6 +3,7 @@ import type { HudEvent, HudRuntimeState } from './types'
 const TEAM_POWER = 250000
 const RATING = 26
 const JUDGE_VISIBLE_WINDOW_SEC = 0.24
+const SCORE_DELTA_VISIBLE_WINDOW_SEC = 0.5
 
 const rankBorder = 1200000 + (RATING - 5) * 4100
 const rankS = 1040000 + (RATING - 5) * 5200
@@ -86,6 +87,8 @@ export class HudTimeline {
 
   private readonly timelineScoreBars: number[]
 
+  private readonly timelineScoreDeltas: number[]
+
   private readonly timelineLastJudgeTimes: number[]
 
   constructor(events: HudEvent[]) {
@@ -101,6 +104,7 @@ export class HudTimeline {
     this.timelineCombos = new Array(sorted.length)
     this.timelineRanks = new Array(sorted.length)
     this.timelineScoreBars = new Array(sorted.length)
+    this.timelineScoreDeltas = new Array(sorted.length)
     this.timelineLastJudgeTimes = new Array(sorted.length)
 
     const weightedNotesCount = Math.max(
@@ -139,6 +143,7 @@ export class HudTimeline {
       this.timelineCombos[index] = combo
       this.timelineRanks[index] = rankAndBar.rank
       this.timelineScoreBars[index] = rankAndBar.scoreBarRatio
+      this.timelineScoreDeltas[index] = scoreDelta
       this.timelineLastJudgeTimes[index] = lastJudgeTime
     }
   }
@@ -150,6 +155,10 @@ export class HudTimeline {
         combo: 0,
         rank: 'd',
         scoreBarRatio: 0,
+        scoreDelta: 0,
+        scoreDeltaEventIndex: -1,
+        latestScoreDelta: 0,
+        latestScoreEventIndex: -1,
         showPerfect: false,
         lifeRatio: 1,
       }
@@ -162,10 +171,18 @@ export class HudTimeline {
         combo: 0,
         rank: 'd',
         scoreBarRatio: 0,
+        scoreDelta: 0,
+        scoreDeltaEventIndex: -1,
+        latestScoreDelta: 0,
+        latestScoreEventIndex: -1,
         showPerfect: false,
         lifeRatio: 1,
       }
     }
+
+    const scoreDeltaVisible =
+      timeSec >= this.timelineTimes[index] - 0.0001 &&
+      timeSec <= this.timelineTimes[index] + SCORE_DELTA_VISIBLE_WINDOW_SEC
 
     const judgeTime = this.timelineLastJudgeTimes[index]
     const showPerfect =
@@ -176,6 +193,10 @@ export class HudTimeline {
       combo: this.timelineCombos[index],
       rank: this.timelineRanks[index],
       scoreBarRatio: this.timelineScoreBars[index],
+      scoreDelta: scoreDeltaVisible ? Math.max(0, Math.round(this.timelineScoreDeltas[index])) : 0,
+      scoreDeltaEventIndex: scoreDeltaVisible ? index : -1,
+      latestScoreDelta: Math.max(0, Math.round(this.timelineScoreDeltas[index])),
+      latestScoreEventIndex: index,
       showPerfect,
       lifeRatio: 1,
     }

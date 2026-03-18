@@ -67,6 +67,10 @@ export type HudRuntimeState = {
   combo: number
   rank: 'd' | 'c' | 'b' | 'a' | 's'
   scoreBarRatio: number
+  scoreDelta: number
+  scoreDeltaEventIndex: number
+  latestScoreDelta: number
+  latestScoreEventIndex: number
   showPerfect: boolean
   lifeRatio: number
 }

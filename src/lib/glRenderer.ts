@@ -220,13 +220,14 @@ export class GlPreviewRenderer {
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height)
   }
 
-  render(frame: Float32Array, quadCount: number, config: PreviewRuntimeConfig) {
+  render(frame: Float32Array, quadCount: number, config: PreviewRuntimeConfig, runtimeOpacity = 1) {
     const gl = this.gl
     gl.clearColor(0.03, 0.03, 0.05, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
 
+    const normalizedRuntimeOpacity = Math.min(1, Math.max(0, runtimeOpacity))
     this.drawStaticScene(config)
-    this.drawFrame(frame, quadCount, config)
+    this.drawFrame(frame, quadCount, config, normalizedRuntimeOpacity)
   }
 
   private drawStaticScene(config: PreviewRuntimeConfig) {
@@ -291,7 +292,7 @@ export class GlPreviewRenderer {
     this.textures.set(key, { image, texture })
   }
 
-  private drawFrame(frame: Float32Array, quadCount: number, config: PreviewRuntimeConfig) {
+  private drawFrame(frame: Float32Array, quadCount: number, config: PreviewRuntimeConfig, runtimeOpacity: number) {
     let currentTexture: TextureKey | null = null
     let currentBlend: 'normal' | 'additive' = 'normal'
     let batch: number[] = []
@@ -316,7 +317,7 @@ export class GlPreviewRenderer {
 
       currentTexture = textureKey
       currentBlend = blend
-      this.appendRuntimeQuad(batch, textureKey, frame, offset, config)
+      this.appendRuntimeQuad(batch, textureKey, frame, offset, config, runtimeOpacity)
     }
 
     if (currentTexture && batch.length > 0) {
@@ -330,6 +331,7 @@ export class GlPreviewRenderer {
     frame: Float32Array,
     offset: number,
     config: PreviewRuntimeConfig,
+    runtimeOpacity: number,
   ) {
     const texture = this.requireTexture(textureKey)
     const rawTextureId = Math.round(frame[offset + 24])
@@ -372,7 +374,7 @@ export class GlPreviewRenderer {
       frame[offset + 20],
       frame[offset + 21],
       frame[offset + 22],
-      frame[offset + 23] * alphaMultiplier,
+      frame[offset + 23] * alphaMultiplier * runtimeOpacity,
     ] as const
 
     this.pushTriangle(target, [clipPositions[0][0], clipPositions[0][1]], uvs[0], color, clipPositions[0][2])
