@@ -69,14 +69,14 @@ body {
 }
 
 .app-shell {
-  display: grid;
-  grid-template-rows: auto auto;
-  justify-items: center;
-  align-content: start;
-  min-height: 100vh;
-  padding: 18px;
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 24px;
 }
+
+
 
 .preview-panel {
   width: min(100%, 1400px);
@@ -175,10 +175,7 @@ body {
   width: 100vw;
   padding: 0;
   gap: 0;
-  grid-template-rows: 1fr;
-  align-items: center;
-  justify-items: center;
-  align-content: center;
+  justify-content: center;
   background: #04070d;
 }
 
@@ -212,6 +209,7 @@ body {
 .app-shell.fullscreen-mode .warning-text,
 .app-shell.fullscreen-mode .ios-hint,
 .app-shell.fullscreen-mode .attribution-line,
+.app-shell.fullscreen-mode .about-line,
 .app-shell.fullscreen-mode #time-readout {
   display: none;
 }
@@ -927,6 +925,23 @@ body {
   text-decoration: underline;
 }
 
+.about-line {
+  margin-top: 2px;
+  color: rgba(226, 236, 245, 0.64);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.about-line a {
+  color: #9fd2ff;
+  text-decoration: none;
+}
+
+.about-line a:hover {
+  text-decoration: underline;
+}
+
 .controls {
   width: min(100%, 1400px);
   display: grid;
@@ -1178,6 +1193,21 @@ body {
 }
 
 @media (max-width: 760px) {
+  .preview-page-shell {
+    padding: 12px 12px 0;
+    gap: 10px;
+  }
+
+  .preview-site-nav {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .preview-page-shell .app-shell {
+    padding: 0 0 12px;
+  }
+
   .app-shell {
     padding: 12px;
     gap: 12px;

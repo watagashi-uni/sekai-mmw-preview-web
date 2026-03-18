@@ -1,114 +1,95 @@
 # sekai-mmw-preview-web
 
-A standalone, readonly browser preview for SUS charts with MMW-style stage,
-notes, hold rendering, effects, and judgement sounds.
+Project SEKAI 本家风格的 SUS 预览器 Web 版本，支持 wasm 渲染、HUD、开场信息、AP 结算演出与本地文件加载。
 
-This project is adapted from [MikuMikuWorld](https://github.com/crash5band/MikuMikuWorld)
-and focuses on preview playback only (no editor UI).
+## 页面结构
 
-## Features
+- `/`：主页（项目介绍 + 入口）
+- `/upload`：上传页面（本地 SUS/BGM/曲绘与元信息）
+- `/preview`：预览页面（播放器 + HUD + 控制台）
+- `/about`：关于页面（开发者、引用项目、许可证）
 
-- Readonly chart preview at site root (`/`)
-- URL-driven loading:
-  - `sus` (required): SUS URL
-  - `bgm` (optional): audio URL
-  - `offset` (optional): milliseconds, positive input from URL side
-- MMW-style rendering pipeline in WebAssembly
-- Effects and judgement SE playback
-- Runtime controls:
-  - play/pause/stop
-  - seek
-  - playback rate
-  - `noteSpeed` slider (`1.0..12.0`, default `10.5`)
-  - low-effects toggle
+## 主要功能
 
-## URL Format
+- SUS 谱面解析与 WebAssembly 渲染
+- 音频与谱面时间轴同步（支持 `offset`）
+- Overlay 风格 HUD（分数/血条/combo/PERFECT）
+- 开场歌曲信息展示与过场
+- 结尾 AP 演出层
+- 无 URL 参数时可直接本地上传文件预览
+- 背景亮度调节（60%~100%）
+- 录屏模式下可隐藏锁屏组件及默认隐藏控制栏
 
-```text
-/?sus=<sus-url>&bgm=<bgm-url>&offset=<ms>
-```
+## URL 预览参数
 
-Example:
+基础模式：
 
 ```text
-/?sus=https%3A%2F%2Fassets.unipjsk.com%2Fstartapp%2Fmusic%2Fmusic_score%2F0703_01%2Fmaster&bgm=https%3A%2F%2Fassets.unipjsk.com%2Fondemand%2Fmusic%2Flong%2Fse_0703_01%2Fse_0703_01.mp3&offset=9000
+/preview?sus=<sus-url>&bgm=<bgm-url>&offset=<ms>&cover=<cover-url>
 ```
 
-Offset behavior:
+可选扩展参数（可单独传，或放入 `config/cfg`）：
 
-- URL `offset` has higher priority than `#WAVEOFFSET` in SUS
-- Internal rule is `internalOffsetMs = -offset`
-- If URL `offset` is missing, fallback uses SUS `#WAVEOFFSET`
+- `title`
+- `lyricist`
+- `composer`
+- `arranger`
+- `vocal`
+- `difficulty` / `diff`
 
-## Requirements
+### 更优雅的 config/cfg 方式
 
-- Node.js 20+
-- npm 10+
-- Emscripten (`emcc`) in `PATH`
+支持把参数打包为 JSON 放进 `config` 或 `cfg`：
 
-Check:
+- 长键：`sus bgm cover offset title lyricist composer arranger vocal difficulty`
+- 短键：`s b c o t ly co ar v d`
 
-```bash
-node -v
-npm -v
-emcc -v
+示例（短键 JSON，URL Encode 后放入 `cfg=`）：
+
+```json
+{
+  "s": "https://assets.unipjsk.com/startapp/music/music_score/0127_01/append",
+  "b": "https://assets.unipjsk.com/ondemand/music/long/se_0127_01/se_0127_01.mp3",
+  "c": "https://assets.unipjsk.com/startapp/music/jacket/jacket_s_127/jacket_s_127.png",
+  "o": 9000,
+  "d": 5,
+  "t": "トンデモワンダーズ",
+  "ly": "sasakure.UK",
+  "co": "sasakure.UK",
+  "ar": "sasakure.UK(Key 岸田勇気(有形ランペイジ))",
+  "v": "天馬司, KAITO, 鳳えむ, 草薙寧々, 神代類"
+}
 ```
 
-## Install
+## 开发
+
+要求：Node.js 20+、npm 10+、`emcc` 在 `PATH`
 
 ```bash
 npm install
-```
-
-## Development
-
-```bash
 npm run dev
 ```
 
-This command will:
-
-1. sync assets from local MMW source
-2. build wasm
-3. start Vite dev server
-
-## Production Build
+构建：
 
 ```bash
 npm run build
-```
-
-Preview built output:
-
-```bash
 npm run preview
 ```
 
-## Project Structure
+## 致谢与许可证
 
-- `src/`: web app (UI, transport, wasm bridge, renderer)
-- `native/src/mmw_preview.cpp`: wasm entry and chart/render pipeline
-- `native/mmw_port/`: ported MMW runtime modules
-- `scripts/build-wasm.mjs`: Emscripten build script
-- `scripts/sync-mmw-assets.mjs`: asset sync script
-- `public/`: static assets served directly
+本项目使用并改造了以下开源项目：
 
-## Troubleshooting
+- [crash5band/MikuMikuWorld](https://github.com/crash5band/MikuMikuWorld)（MIT）
+- MikuMikuWorld MIT License: [LICENSE](https://github.com/crash5band/MikuMikuWorld/blob/master/LICENSE)
+- [TootieJin/pjsekai-overlay-APPEND](https://github.com/TootieJin/pjsekai-overlay-APPEND)（AGPL）
 
-- `memory access out of bounds`
-  - usually caused by very large chart transfer/parsing stress
-  - current bridge uses heap allocation for SUS input to avoid stack overflow
-- stuck on `正在加载歌曲`
-  - BGM loading and decode now have timeout fallback to silent preview
-  - check browser console/network for CORS or blocked URL
-- big SUS feels slow
-  - parsing/rendering complexity depends on chart content, not only file size
-  - for extreme charts, consider moving parsing to Web Worker in future
+由于引入了 AGPL 许可代码，本项目当前按 **AGPL-3.0-only** 发布。
 
-## License and Attribution
+- 项目许可证文件：`/LICENSE`
 
-This project contains code modified from MikuMikuWorld by Crash5b and is
-distributed under the MIT License.
+## 开发者
 
-- See [LICENSE](./LICENSE)
-- Original project: [crash5band/MikuMikuWorld](https://github.com/crash5band/MikuMikuWorld)
+- 綿菓子ウニ: [https://space.bilibili.com/622551112](https://space.bilibili.com/622551112)
+- GitHub: [https://github.com/watagashi-uni/sekai-mmw-preview-web](https://github.com/watagashi-uni/sekai-mmw-preview-web)
