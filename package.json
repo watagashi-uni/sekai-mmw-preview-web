@@ -9,7 +9,7 @@
     "build:wasm": "node ./scripts/build-wasm.mjs",
     "dev": "npm run sync:mmw && npm run build:wasm && vite",
     "build": "npm run sync:mmw && npm run build:wasm && vite build",
-    "preview": "npm run build && vite preview"
+    "preview": "vite preview"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
