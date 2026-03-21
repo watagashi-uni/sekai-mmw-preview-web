@@ -14,3 +14,4 @@ pnpm-debug.log*
 coverage
 *.tsbuildinfo
 tmp-preview.png
+/test

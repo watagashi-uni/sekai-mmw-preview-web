@@ -8,7 +8,6 @@ declare global {
 
 const STYLE_ID = 'mmw-pwa-toast-style'
 const HOST_ID = 'mmw-pwa-toast-host'
-const WARMUP_MESSAGE_TYPE = 'MMW_WARMUP'
 
 function ensureToastStyles() {
   if (document.getElementById(STYLE_ID)) {
@@ -148,27 +147,6 @@ function dismissToast(node: HTMLElement | null) {
   node.remove()
 }
 
-function requestWarmup(registration: ServiceWorkerRegistration | undefined) {
-  const postWarmup = (worker: ServiceWorker | null | undefined) => {
-    if (!worker) {
-      return
-    }
-    worker.postMessage({ type: WARMUP_MESSAGE_TYPE })
-  }
-
-  postWarmup(registration?.active)
-  postWarmup(registration?.waiting)
-  postWarmup(registration?.installing)
-
-  void navigator.serviceWorker.ready
-    .then((readyRegistration) => {
-      postWarmup(readyRegistration.active)
-    })
-    .catch(() => {
-      // ignore readiness failures
-    })
-}
-
 export function setupPwaUpdatePrompt() {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return
@@ -186,9 +164,6 @@ export function setupPwaUpdatePrompt() {
 
   const updateSW = registerSW({
     immediate: true,
-    onRegisteredSW(_swScriptUrl, registration) {
-      requestWarmup(registration)
-    },
     onNeedRefresh() {
       if (updateToastNode) {
         return

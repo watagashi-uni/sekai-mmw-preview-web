@@ -27,13 +27,17 @@ if (!appRoot) {
 }
 const app: HTMLDivElement = appRoot
 
-setupPwaUpdatePrompt()
-
 function normalizePath(pathname: string) {
   if (pathname.endsWith('/') && pathname !== '/') {
     return pathname.slice(0, -1)
   }
   return pathname
+}
+
+const bootUrl = new URL(window.location.href)
+const bootPath = normalizePath(bootUrl.pathname)
+if (bootPath !== '/preview') {
+  setupPwaUpdatePrompt()
 }
 
 function hasPreviewQuery(url: URL) {

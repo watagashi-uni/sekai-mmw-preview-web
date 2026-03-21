@@ -40,7 +40,12 @@ export default defineConfig({
       },
       injectManifest: {
         maximumFileSizeToCacheInBytes: 80 * 1024 * 1024,
-        globIgnores: ['**/.DS_Store', '**/pwa/icon-source.png'],
+        globIgnores: [
+          '**/.DS_Store',
+          '**/pwa/icon-source.png',
+          '**/assets/mmw/**',
+          '**/assets/*.wasm',
+        ],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,gif,json,mp3,mp4,wasm,txt,woff,woff2}'],
       },
       devOptions: {

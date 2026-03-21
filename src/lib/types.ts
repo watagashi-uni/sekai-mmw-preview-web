@@ -62,6 +62,29 @@ export type SongMetadata = {
   designer: string
 }
 
+export type SessionMetadata = {
+  title: string | null
+  lyricist: string | null
+  composer: string | null
+  arranger: string | null
+  vocal: string | null
+  difficulty: string | null
+}
+
+export type WasmPlayerSnapshot = {
+  currentTimeSec: number
+  durationSec: number
+  chartEndSec: number
+  sourceOffsetSec: number
+  effectiveLeadInSec: number
+  audioStartDelaySec: number
+  apStartSec: number
+  transportState: TransportState
+  requiresGesture: boolean
+  hasAudio: boolean
+  warnings: string
+}
+
 export type HudRuntimeState = {
   score: number
   combo: number

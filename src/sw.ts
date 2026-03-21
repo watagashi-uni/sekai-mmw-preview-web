@@ -14,9 +14,7 @@ declare const self: ServiceWorkerGlobalScope & {
   }>
 }
 
-const CACHE_NAME_STATIC_RUNTIME = 'mmw-static-runtime-v1'
-const CACHE_ENTRY_FILTER = /^(?:\/?assets\/mmw\/|\/?wasm\/)/
-const WARMUP_MESSAGE_TYPE = 'MMW_WARMUP'
+const CACHE_NAME_STATIC_RUNTIME = 'mmw-static-runtime-v2'
 
 function normalizeManifestUrl(url: string) {
   const prefixed = url.startsWith('/') ? url : `/${url}`
@@ -55,50 +53,6 @@ const precacheManifest = (() => {
   return Array.from(dedupedByUrl.values())
 })()
 
-const warmupUrls = Array.from(
-  new Set(
-    precacheManifest
-      .map((entry) => entry.url)
-      .filter((url) => CACHE_ENTRY_FILTER.test(url)),
-  ),
-)
-
-let warmupPromise: Promise<void> | null = null
-
-async function warmupStaticAssets() {
-  if (warmupPromise) {
-    return warmupPromise
-  }
-
-  warmupPromise = (async () => {
-    const cache = await caches.open(CACHE_NAME_STATIC_RUNTIME)
-    for (const url of warmupUrls) {
-      try {
-        const request = new Request(url, {
-          cache: 'reload',
-        })
-        const alreadyCached = await cache.match(request)
-        if (alreadyCached) {
-          continue
-        }
-
-        const response = await fetch(request)
-        if (response.ok || response.status === 0) {
-          await cache.put(request, response.clone())
-        }
-      } catch {
-        // ignore individual failures; keep warming the rest
-      }
-    }
-  })()
-
-  try {
-    await warmupPromise
-  } finally {
-    warmupPromise = null
-  }
-}
-
 self.addEventListener('message', (event) => {
   if (!event.data || typeof event.data !== 'object') {
     return
@@ -106,11 +60,6 @@ self.addEventListener('message', (event) => {
 
   if (event.data.type === 'SKIP_WAITING') {
     void self.skipWaiting()
-    return
-  }
-
-  if (event.data.type === WARMUP_MESSAGE_TYPE) {
-    event.waitUntil(warmupStaticAssets())
   }
 })
 
@@ -127,7 +76,7 @@ registerRoute(
 registerRoute(
   ({ url }) =>
     url.origin === self.location.origin &&
-    (url.pathname.startsWith('/assets/mmw/') || url.pathname.startsWith('/wasm/')),
+    (url.pathname.startsWith('/assets/mmw/') || url.pathname.endsWith('.wasm') || url.pathname.startsWith('/wasm/')),
   new CacheFirst({
     cacheName: CACHE_NAME_STATIC_RUNTIME,
     plugins: [
@@ -140,7 +89,3 @@ registerRoute(
   }),
   'GET',
 )
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(warmupStaticAssets())
-})

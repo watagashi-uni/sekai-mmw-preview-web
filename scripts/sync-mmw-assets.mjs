@@ -5,6 +5,7 @@ const projectRoot = '/Users/watagashi/Documents/Code/sekai-mmw-preview-web'
 const mmwRoot = '/Users/watagashi/Documents/Code/MikuMikuWorld/MikuMikuWorld'
 const overlayRoot = '/Users/watagashi/Downloads/pjsekai-overlay-APPEND-main/assets'
 const backgroundGenRoot = '/Users/watagashi/Documents/Code/pjsekai-background-gen-rust/crates/core/assets'
+const overlayRendererAssetRoot = '/Users/watagashi/Documents/Code/MikuMikuWorld/tools/overlay_renderer/assets/mmw'
 
 const assetCopies = [
   ['res/editor/default.png', 'public/assets/mmw/default.png'],
@@ -33,6 +34,12 @@ const overlayAssetCopies = [
   ['ap.mp4', 'public/assets/mmw/overlay/ap.mp4'],
   ['combo.png', 'public/assets/mmw/overlay/combo.png'],
   ['life.png', 'public/assets/mmw/overlay/life.png'],
+]
+
+const fontCopies = [
+  ['font/FOT-RodinNTLGPro-DB.ttf', 'public/assets/mmw/font/FOT-RodinNTLGPro-DB.ttf'],
+  ['font/FOT-RodinNTLG Pro EB.otf', 'public/assets/mmw/font/FOT-RodinNTLG Pro EB.otf'],
+  ['font/NotoSansCJKSC-Black.ttf', 'public/assets/mmw/font/NotoSansCJKSC-Black.ttf'],
 ]
 
 const overlayTopLevelPngCopies = fs
@@ -212,6 +219,13 @@ for (const [from, to] of overlayTopLevelPngCopies) {
 
 for (const [from, to] of overlayDirCopies) {
   copyDirectoryRecursive(path.join(overlayRoot, from), path.join(projectRoot, to))
+}
+
+for (const [from, to] of fontCopies) {
+  const source = path.join(overlayRendererAssetRoot, from)
+  const target = path.join(projectRoot, to)
+  ensureDir(path.dirname(target))
+  fs.copyFileSync(source, target)
 }
 
 if (fs.existsSync(backgroundGenRoot)) {

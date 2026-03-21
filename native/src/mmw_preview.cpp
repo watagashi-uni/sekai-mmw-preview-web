@@ -15,7 +15,13 @@
 #include <utility>
 #include <vector>
 
+#ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#else
+#ifndef EMSCRIPTEN_KEEPALIVE
+#define EMSCRIPTEN_KEEPALIVE
+#endif
+#endif
 
 #include "generated_resources.h"
 #include "../mmw_port/ApplicationConfiguration.h"
@@ -927,7 +933,7 @@ namespace mmw_preview
         gRuntime.effectView.init();
         gRuntime.effectCamera.setFov(50.0f);
         gRuntime.effectCamera.setRotation(-90.0f, 27.1f);
-        gRuntime.effectCamera.setPosition({0.0f, 5.32f, -5.86f, 0.0f});
+        gRuntime.effectCamera.setPosition(DirectX::XMVectorSet(0.0f, 5.32f, -5.86f, 0.0f));
         gRuntime.effectCamera.positionCamNormal();
         gRuntime.effectRenderer = {};
         gRuntime.effectQuads.clear();
@@ -1094,6 +1100,45 @@ namespace mmw_preview
         }
     }
 
+    [[nodiscard]] std::string comboDedupKey(const Note& note)
+    {
+        return std::to_string(static_cast<int>(note.type)) + "|" +
+            std::to_string(note.tick) + "|" +
+            std::to_string(note.lane) + "|" +
+            std::to_string(note.width) + "|" +
+            std::to_string(note.critical ? 1 : 0) + "|" +
+            std::to_string(note.friction ? 1 : 0) + "|" +
+            std::to_string(static_cast<int>(note.flick));
+    }
+
+    [[nodiscard]] std::string holdHalfBeatDedupKey(int holdId, const HoldNote& hold, const Score& score, int tick)
+    {
+        const Note& holdStart = score.notes.at(holdId);
+        const Note& holdEnd = score.notes.at(hold.end);
+
+        std::string key =
+            std::to_string(tick) + "|" +
+            std::to_string(holdStart.tick) + "|" +
+            std::to_string(holdStart.lane) + "|" +
+            std::to_string(holdStart.width) + "|" +
+            std::to_string(holdEnd.tick) + "|" +
+            std::to_string(holdEnd.lane) + "|" +
+            std::to_string(holdEnd.width) + "|" +
+            std::to_string(holdStart.critical ? 1 : 0) + "|" +
+            std::to_string(holdStart.friction ? 1 : 0);
+
+        for (const auto& step : hold.steps) {
+            const Note& stepNote = score.notes.at(step.ID);
+            key += "|" +
+                std::to_string(stepNote.tick) + ":" +
+                std::to_string(stepNote.lane) + ":" +
+                std::to_string(stepNote.width) + ":" +
+                std::to_string(static_cast<int>(step.type));
+        }
+
+        return key;
+    }
+
     void calculateHudEvents()
     {
         gRuntime.hudEvents.clear();
@@ -1131,6 +1176,9 @@ namespace mmw_preview
                 static_cast<float>(flags),
             });
         };
+
+        std::unordered_set<std::string> seenComboKeys;
+        seenComboKeys.reserve(gRuntime.score.notes.size() * 2);
 
         for (const auto& [id, note] : gRuntime.score.notes) {
             (void)id;
@@ -1178,6 +1226,10 @@ namespace mmw_preview
                 kind = HudEventKind::CriticalTap;
             }
 
+            if (!seenComboKeys.insert(comboDedupKey(note)).second) {
+                continue;
+            }
+
             pushEvent(
                 accumulateDuration(note.tick, TICKS_PER_BEAT, gRuntime.score.tempoChanges),
                 kind,
@@ -1212,6 +1264,9 @@ namespace mmw_preview
             }
 
             for (int tick = eigthTick; tick < endTick; tick += halfBeat) {
+                if (!seenComboKeys.insert(holdHalfBeatDedupKey(holdId, hold, gRuntime.score, tick)).second) {
+                    continue;
+                }
                 pushEvent(
                     accumulateDuration(tick, TICKS_PER_BEAT, gRuntime.score.tempoChanges),
                     HudEventKind::HoldHalfBeat,
@@ -2273,6 +2328,8 @@ namespace mmw_preview
 
 extern "C"
 {
+    EMSCRIPTEN_KEEPALIVE int loadSusTextPrecise(const char* susText, double normalizedOffsetMs);
+
     EMSCRIPTEN_KEEPALIVE int init(int)
     {
         mmw_preview::gRuntime = {};
@@ -2287,6 +2344,11 @@ extern "C"
     }
 
     EMSCRIPTEN_KEEPALIVE int loadSusText(const char* susText, int normalizedOffsetMs)
+    {
+        return loadSusTextPrecise(susText, static_cast<double>(normalizedOffsetMs));
+    }
+
+    EMSCRIPTEN_KEEPALIVE int loadSusTextPrecise(const char* susText, double normalizedOffsetMs)
     {
         using namespace mmw_preview;
 
