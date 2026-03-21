@@ -20,10 +20,11 @@ const defaultConfig: PreviewRuntimeConfig = {
 const MIN_CHART_LEAD_IN_MS = 9000
 const FETCH_TIMEOUT_MS = 30000
 const LOW_RESOLUTION_STORAGE_KEY = 'preview-low-resolution'
-const MAX_RENDER_WIDTH = 1280
-const MAX_RENDER_HEIGHT = 720
-const LOW_RENDER_WIDTH = 960
-const LOW_RENDER_HEIGHT = 540
+const FONT_HINT_SEEN_STORAGE_KEY = 'preview-font-hint-seen'
+const MAX_RENDER_WIDTH = 1920
+const MAX_RENDER_HEIGHT = 1080
+const LOW_RENDER_WIDTH = 1280
+const LOW_RENDER_HEIGHT = 720
 const UI_REFRESH_INTERVAL_MS = 50
 const CONTROLS_AUTO_HIDE_MS = 3000
 const AP_VIDEO_URL = '/assets/mmw/overlay/ap.mp4'
@@ -391,6 +392,7 @@ let iosTouchGuardsCleanup: (() => void) | null = null
 let isIOS = false
 let isIPad = false
 let lowResolutionEnabled = false
+let shouldShowInitialFontHint = false
 let apSequenceTriggered = false
 let apPlaybackActive = false
 let apLastDrawMs = 0
@@ -457,8 +459,10 @@ function buildStaticAssetManifest() {
   }
 
   for (const char of ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'n', '+']) {
-    assets.push({ key: `overlay/score/digit/${char}.png`, url: `/assets/mmw/overlay/score/digit/${char}.png` })
-    assets.push({ key: `overlay/score/digit/s${char}.png`, url: `/assets/mmw/overlay/score/digit/s${char}.png` })
+    const fileStem = char === '+' ? 'plus' : char
+    const shadowStem = char === '+' ? 'splus' : `s${char}`
+    assets.push({ key: `overlay/score/digit/${fileStem}.png`, url: `/assets/mmw/overlay/score/digit/${fileStem}.png` })
+    assets.push({ key: `overlay/score/digit/${shadowStem}.png`, url: `/assets/mmw/overlay/score/digit/${shadowStem}.png` })
   }
 
   for (const char of ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']) {
@@ -617,21 +621,33 @@ async function ensureStaticResourcesLoaded() {
 
 function getRenderTargetSize(width: number, height: number) {
   if (width <= 0 || height <= 0) {
-    return { width: 1, height: 1 }
+    return { width: 1, height: 1, dpr: 1 }
   }
+  const cssWidth = Math.max(1, Math.round(width))
+  const cssHeight = Math.max(1, Math.round(height))
   const maxWidth = lowResolutionEnabled ? LOW_RENDER_WIDTH : MAX_RENDER_WIDTH
   const maxHeight = lowResolutionEnabled ? LOW_RENDER_HEIGHT : MAX_RENDER_HEIGHT
-  const scale = Math.min(1, maxWidth / width, maxHeight / height)
+  const deviceDpr =
+    typeof window === 'undefined'
+      ? 1
+      : Math.min(Math.max(window.devicePixelRatio || 1, 1), 3)
+  const dpr = Math.min(
+    deviceDpr,
+    Math.max(1, maxWidth / cssWidth),
+    Math.max(1, maxHeight / cssHeight),
+  )
   return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
+    width: cssWidth,
+    height: cssHeight,
+    dpr,
   }
 }
 
 function resizeApCanvas() {
   const bounds = previewPanel.getBoundingClientRect()
-  const width = Math.max(2, Math.round(bounds.width))
-  const height = Math.max(2, Math.round(bounds.height))
+  const renderSize = getRenderTargetSize(bounds.width, bounds.height)
+  const width = Math.max(2, Math.round(renderSize.width * renderSize.dpr))
+  const height = Math.max(2, Math.round(renderSize.height * renderSize.dpr))
   if (apCanvas.width === width && apCanvas.height === height) {
     return
   }
@@ -652,7 +668,7 @@ function applyRenderSize() {
   }
   const bounds = previewPanel.getBoundingClientRect()
   const renderSize = getRenderTargetSize(bounds.width, bounds.height)
-  player.resize(renderSize.width, renderSize.height, 1)
+  player.resize(renderSize.width, renderSize.height, renderSize.dpr)
   resizeApCanvas()
 }
 
@@ -1215,13 +1231,23 @@ function applyBackgroundBrightness(percent: number) {
 
 async function bootstrap() {
   try {
-    setStatus('正在加载 MMW 资源', '初始化 wasm 播放器与原生 Overlay 贴图、字体、音效中。')
+    setStatus(
+      '正在加载 MMW 资源',
+      shouldShowInitialFontHint
+        ? '初始化 wasm 播放器与原生 Overlay 贴图、字体、音效中。首次加载字体文件很大（约 20MB），请耐心等待。'
+        : '初始化 wasm 播放器与原生 Overlay 贴图、字体、音效中。',
+    )
     const bounds = previewPanel.getBoundingClientRect()
     const width = bounds.width || 1280
     const height = bounds.height || 720
     const renderSize = getRenderTargetSize(width, height)
-    await player.init(canvas, renderSize.width, renderSize.height, 1)
+    await player.init(canvas, renderSize.width, renderSize.height, renderSize.dpr)
     await ensureStaticResourcesLoaded()
+    try {
+      window.localStorage.setItem(FONT_HINT_SEEN_STORAGE_KEY, '1')
+    } catch {
+      // ignore storage failures
+    }
     player.setPreviewConfig(currentConfig)
     runtimeReady = true
     resizeObserver.observe(previewPanel)
@@ -1471,6 +1497,12 @@ try {
   lowResolutionEnabled = false
 }
 lowResolutionInput.checked = lowResolutionEnabled
+
+try {
+  shouldShowInitialFontHint = window.localStorage.getItem(FONT_HINT_SEEN_STORAGE_KEY) !== '1'
+} catch {
+  shouldShowInitialFontHint = true
+}
 applyNoteSpeed(currentConfig.noteSpeed)
 applyBackgroundBrightness(100)
 playToggle.innerHTML = renderTextIconButton(ICON_PLAY, '播放')

@@ -2920,8 +2920,10 @@ void main() {
         }
         const std::string scoreDigitChars = "0123456789n+";
         for (const char ch : scoreDigitChars) {
-            addHudTexture(std::string("score_digit_") + ch, std::string("overlay/score/digit/") + ch + ".png");
-            addHudTexture(std::string("score_digit_s_") + ch, std::string("overlay/score/digit/s") + ch + ".png");
+            const std::string fileStem = ch == '+' ? "plus" : std::string(1, ch);
+            const std::string shadowStem = ch == '+' ? "splus" : std::string("s") + ch;
+            addHudTexture(std::string("score_digit_") + ch, std::string("overlay/score/digit/") + fileStem + ".png");
+            addHudTexture(std::string("score_digit_s_") + ch, std::string("overlay/score/digit/") + shadowStem + ".png");
         }
         const std::string comboDigitChars = "0123456789";
         for (const char ch : comboDigitChars) {

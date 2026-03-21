@@ -36,9 +36,7 @@ function normalizePath(pathname: string) {
 
 const bootUrl = new URL(window.location.href)
 const bootPath = normalizePath(bootUrl.pathname)
-if (bootPath !== '/preview') {
-  setupPwaUpdatePrompt()
-}
+setupPwaUpdatePrompt()
 
 function hasPreviewQuery(url: URL) {
   const keys = ['sus', 'config', 'cfg', 'bgm', 'cover', 'offset']

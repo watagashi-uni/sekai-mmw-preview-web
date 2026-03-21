@@ -15,6 +15,11 @@ declare const self: ServiceWorkerGlobalScope & {
 }
 
 const CACHE_NAME_STATIC_RUNTIME = 'mmw-static-runtime-v2'
+const FONT_PRECACHE_ENTRIES = [
+  { url: '/assets/mmw/font/FOT-RodinNTLGPro-DB.ttf', revision: 'overlay-fonts-v1' },
+  { url: '/assets/mmw/font/FOT-RodinNTLG Pro EB.otf', revision: 'overlay-fonts-v1' },
+  { url: '/assets/mmw/font/NotoSansCJKSC-Black.ttf', revision: 'overlay-fonts-v1' },
+]
 
 function normalizeManifestUrl(url: string) {
   const prefixed = url.startsWith('/') ? url : `/${url}`
@@ -50,6 +55,14 @@ const precacheManifest = (() => {
     }
   }
 
+  for (const entry of FONT_PRECACHE_ENTRIES) {
+    const normalizedEntry = {
+      ...entry,
+      url: normalizeManifestUrl(entry.url),
+    }
+    dedupedByUrl.set(normalizedEntry.url, normalizedEntry)
+  }
+
   return Array.from(dedupedByUrl.values())
 })()
 
@@ -63,7 +76,6 @@ self.addEventListener('message', (event) => {
   }
 })
 
-void self.skipWaiting()
 clientsClaim()
 
 precacheAndRoute(precacheManifest)
