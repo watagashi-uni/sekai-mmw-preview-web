@@ -2,7 +2,9 @@
 
 Project SEKAI 风格 SUS 预览器（Web 版）。
 
-支持 wasm 渲染、Overlay HUD（分数/血量/combo/PERFECT）、开场信息卡、AP 结尾演出、本地文件上传与 PWA 资源缓存。
+![Preview](docs/preview.jpg)
+
+支持纯 wasm 渲染的谱面与 Overlay HUD（分数/血量/combo/PERFECT/开场信息卡）、Web AP 结尾演出、本地文件上传与 PWA 缓存。
 
 ## 页面路由
 
@@ -17,14 +19,15 @@ Project SEKAI 风格 SUS 预览器（Web 版）。
 
 ## 功能概览
 
-- SUS 解析与 WebAssembly 渲染
+- SUS 解析与 WebAssembly 原生渲染
 - 音轨与谱面同步（支持 `offset`）
-- Overlay 风格 HUD 与开场信息层
-- AP 结尾演出（暗场 + 叠加视频）
+- 纯 wasm Overlay HUD、背景生成与开场信息层
+- AP 结尾演出（暗场 + Web 视频叠加）
 - 本地上传 SUS/BGM/曲绘
 - 背景亮度调节（60%~100%）
 - 可选显示锁屏组件，便于录屏
-- PWA + Service Worker 预热静态资源缓存
+- PWA + Service Worker 按需缓存
+- 移动端高 DPR 预览适配
 
 ## 快速开始
 
@@ -40,6 +43,11 @@ Project SEKAI 风格 SUS 预览器（Web 版）。
 npm install
 npm run dev
 ```
+
+说明：
+
+- 日常联调建议使用 `npm run dev`。
+- 如果你要验证 wasm 产物、PWA、Service Worker 或部署结果，请先执行 `npm run build`，再执行 `npm run preview`。
 
 生产构建与预览：
 
@@ -140,8 +148,10 @@ const url = `https://chartview.unipjsk.com/preview?cfg=${cfg}`
 ## PWA 与缓存
 
 - 已启用 Service Worker（`vite-plugin-pwa` + custom `src/sw.ts`）。
-- 安装时会预热缓存 `assets/mmw/**` 和 `wasm/**`，减少播放中临时拉资源。
+- 大体积资源（`assets/mmw/**`、wasm）改为按需请求后缓存，不会在安装时整包预热。
+- 字体资源会进入预缓存，减少首次进入预览时的字体闪烁和重复拉取。
 - 右下角会显示更新提示（发现新版本 -> 立即更新）。
+- 首次进入预览时会加载较大的字体资源，移动端首开可能需要稍等几秒。
 
 ## 常见问题排查
 
@@ -158,6 +168,12 @@ const url = `https://chartview.unipjsk.com/preview?cfg=${cfg}`
 - 必须在 HTTPS 或 localhost 下。
 - 先执行 `npm run build`，再执行 `npm run preview`。
 - 检查 DevTools 是否勾选了 `Bypass for network`。
+
+3. 手机画面模糊 / 锯齿明显
+
+- 当前预览会按设备 DPR 自适应渲染分辨率。
+- 如果仍觉得不够清晰，先确认没有开启“低分辨率”。
+- 某些旧移动设备会因为性能自动表现较弱，优先在横屏全屏下测试。
 
 3. 远程 SUS/BGM/曲绘加载失败
 
