@@ -381,6 +381,7 @@ namespace mmw_preview
         bool flickAnimation{true};
         bool holdAnimation{true};
         bool simultaneousLine{true};
+        int effectProfile{};
         float noteSpeed{10.5f};
         float holdAlpha{1.0f};
         float guideAlpha{0.8f};
@@ -928,7 +929,7 @@ namespace mmw_preview
 
     void initializeEffects()
     {
-        mmw::ResourceManager::loadEmbeddedEffects();
+        mmw::ResourceManager::loadEmbeddedEffects(gRuntime.config.effectProfile);
         gRuntime.effectView = {};
         gRuntime.effectView.init();
         gRuntime.effectCamera.setFov(50.0f);
@@ -2387,6 +2388,7 @@ extern "C"
         int flickAnimation,
         int holdAnimation,
         int simultaneousLine,
+        int effectProfile,
         float noteSpeed,
         float holdAlpha,
         float guideAlpha,
@@ -2396,10 +2398,13 @@ extern "C"
         using namespace mmw_preview;
 
         const bool noteSpeedChanged = std::abs(gRuntime.config.noteSpeed - noteSpeed) > 0.0001f;
+        const int resolvedEffectProfile = effectProfile == 1 ? 1 : 0;
+        const bool effectProfileChanged = gRuntime.config.effectProfile != resolvedEffectProfile;
         gRuntime.config.mirror = mirror != 0;
         gRuntime.config.flickAnimation = flickAnimation != 0;
         gRuntime.config.holdAnimation = holdAnimation != 0;
         gRuntime.config.simultaneousLine = simultaneousLine != 0;
+        gRuntime.config.effectProfile = resolvedEffectProfile;
         gRuntime.config.noteSpeed = noteSpeed;
         gRuntime.config.holdAlpha = holdAlpha;
         gRuntime.config.guideAlpha = guideAlpha;
@@ -2407,6 +2412,10 @@ extern "C"
         gRuntime.config.backgroundBrightness = backgroundBrightness;
         mmw::config.pvMirrorScore = gRuntime.config.mirror;
 
+        if (effectProfileChanged && gRuntime.loaded) {
+            initializeEffects();
+            rebuildEffectScore();
+        }
         if (noteSpeedChanged && gRuntime.loaded) {
             calculateDrawData(gRuntime.drawData, gRuntime.score);
         }

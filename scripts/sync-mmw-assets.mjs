@@ -234,11 +234,13 @@ if (fs.existsSync(backgroundGenRoot)) {
   }
 }
 
-for (const effectName of effectNames) {
-  const source = path.join(mmwRoot, 'res/effect/0', `${effectName}.json`)
-  const target = path.join(projectRoot, 'public/assets/mmw/effects', `${effectName}.json`)
-  ensureDir(path.dirname(target))
-  fs.copyFileSync(source, target)
+for (const profile of [0, 1]) {
+  for (const effectName of effectNames) {
+    const source = path.join(mmwRoot, `res/effect/${profile}`, `${effectName}.json`)
+    const target = path.join(projectRoot, 'public/assets/mmw/effects', String(profile), `${effectName}.json`)
+    ensureDir(path.dirname(target))
+    fs.copyFileSync(source, target)
+  }
 }
 
 const atlases = Object.fromEntries(
@@ -252,10 +254,12 @@ const transforms = parseTransforms(
   fs.readFileSync(path.join(mmwRoot, 'res/effect/transform.txt'), 'utf8'),
 ).slice(0, 18)
 
-const embeddedEffects = effectNames.map((name) => ({
-  name,
-  json: fs.readFileSync(path.join(mmwRoot, 'res/effect/0', `${name}.json`), 'utf8'),
-}))
+const embeddedEffectsByProfile = [0, 1].map((profile) =>
+  effectNames.map((name) => ({
+    name,
+    json: fs.readFileSync(path.join(mmwRoot, `res/effect/${profile}`, `${name}.json`), 'utf8'),
+  })),
+)
 
 writeTextFile(
   path.join(projectRoot, 'src/generated/mmwAssets.ts'),
@@ -286,9 +290,18 @@ writeTextFile(
   path.join(projectRoot, 'src/generated/mmwEffects.ts'),
   `export const mmwEffectNames = ${JSON.stringify(effectNames, null, 2)} as const
 
+export const mmwEffectProfiles = [0, 1] as const
+
 export const mmwEffectUrls = Object.fromEntries(
-  mmwEffectNames.map((name) => [name, \`/assets/mmw/effects/\${name}.json\`]),
+  mmwEffectNames.map((name) => [name, \`/assets/mmw/effects/0/\${name}.json\`]),
 ) as Record<(typeof mmwEffectNames)[number], string>
+
+export const mmwEffectProfileUrls = Object.fromEntries(
+  mmwEffectProfiles.map((profile) => [
+    profile,
+    Object.fromEntries(mmwEffectNames.map((name) => [name, \`/assets/mmw/effects/\${profile}/\${name}.json\`])),
+  ]),
+) as Record<(typeof mmwEffectProfiles)[number], Record<(typeof mmwEffectNames)[number], string>>
 `,
 )
 
@@ -321,8 +334,17 @@ ${emitCppArray('kSpriteTransforms', 'std::array<float, 64>', transforms)}
         const char* json;
     };
 
-    inline constexpr std::array<EmbeddedEffect, ${embeddedEffects.length}> kEmbeddedEffects{{
-${embeddedEffects
+    inline constexpr std::array<EmbeddedEffect, ${embeddedEffectsByProfile[0].length}> kEmbeddedEffectsProfile0{{
+${embeddedEffectsByProfile[0]
+  .map(
+    ({ name, json }) =>
+      `        EmbeddedEffect{ "${escapeCppString(name)}", "${escapeCppString(json)}" }`,
+  )
+  .join(',\n')}
+    }};
+
+    inline constexpr std::array<EmbeddedEffect, ${embeddedEffectsByProfile[1].length}> kEmbeddedEffectsProfile1{{
+${embeddedEffectsByProfile[1]
   .map(
     ({ name, json }) =>
       `        EmbeddedEffect{ "${escapeCppString(name)}", "${escapeCppString(json)}" }`,

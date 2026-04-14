@@ -20,7 +20,7 @@ namespace MikuMikuWorld
 		static int getTexture(const std::string& name);
 		static Effect::Particle& getParticleEffect(int id);
 		static int getRootParticleIdByName(const std::string& name);
-		static void loadEmbeddedEffects();
+		static void loadEmbeddedEffects(int profile = 0);
 		static void removeAllParticleEffects();
 
 	private:

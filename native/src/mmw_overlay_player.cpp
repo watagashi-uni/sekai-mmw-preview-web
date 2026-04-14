@@ -47,6 +47,7 @@ extern "C"
         int flickAnimation,
         int holdAnimation,
         int simultaneousLine,
+        int effectProfile,
         float noteSpeed,
         float holdAlpha,
         float guideAlpha,
@@ -2153,6 +2154,10 @@ void main() {
     constexpr float SCORE_DELTA_VISIBLE_WINDOW_SEC = 0.5f;
     constexpr float COMBO_BASE_SCALE = 0.85f;
     constexpr float COMBO_DIGIT_STEP = 92.0f;
+    constexpr float COMBO_GROUP_SCALE = 1.25f;
+    constexpr float COMBO_GROUP_OFFSET_Y = -12.0f;
+    constexpr float COMBO_GROUP_CENTER_X = 1634.0f;
+    constexpr float COMBO_GROUP_CENTER_Y = 478.0f;
     constexpr float SCORE_BAR_FULL_WIDTH = 354.0f;
     constexpr float SCORE_ROOT_SCALE = 1.5f;
     constexpr float CHART_END_PADDING_SEC = 5.0f;
@@ -2805,44 +2810,64 @@ void main() {
             if (coverTexture && coverTexture->id != 0) {
                 const float coverTop = 1080.0f - INTRO_COVER_BOTTOM_PX - INTRO_COVER_SIZE_PX;
                 if (!intro.difficulty.empty()) {
-                    auto difficultyColor = [&](const std::string& value) {
-                        const std::string upper = [&]() {
-                            std::string text = value;
-                            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-                                return static_cast<char>(std::toupper(c));
-                            });
-                            return text;
-                        }();
+                    const std::string upperDifficulty = [&]() {
+                        std::string text = intro.difficulty;
+                        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+                            return static_cast<char>(std::toupper(c));
+                        });
+                        return text;
+                    }();
+                    const int diffAlpha = static_cast<int>(std::lround(clamp01(cardAlpha) * 255.0f));
+                    auto difficultyColor = [&](const std::string& upper) {
                         if (upper == "EASY") {
-                            return IM_COL32(75, 207, 138, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                            return IM_COL32(75, 207, 138, diffAlpha);
                         }
                         if (upper == "NORMAL") {
-                            return IM_COL32(90, 140, 255, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                            return IM_COL32(90, 140, 255, diffAlpha);
                         }
                         if (upper == "HARD") {
-                            return IM_COL32(242, 150, 77, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                            return IM_COL32(242, 150, 77, diffAlpha);
                         }
                         if (upper == "EXPERT") {
-                            return IM_COL32(239, 90, 102, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                            return IM_COL32(239, 90, 102, diffAlpha);
                         }
                         if (upper == "MASTER") {
-                            return IM_COL32(181, 91, 255, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                            return IM_COL32(181, 91, 255, diffAlpha);
                         }
                         if (upper == "APPEND") {
-                            return IM_COL32(179, 162, 255, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                            return IM_COL32(179, 162, 255, diffAlpha);
                         }
                         if (upper == "ETERNAL") {
-                            return IM_COL32(241, 192, 79, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                            return IM_COL32(241, 192, 79, diffAlpha);
                         }
-                        return IM_COL32(169, 56, 255, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                        return IM_COL32(169, 56, 255, diffAlpha);
                     };
                     const float diffX = INTRO_COVER_LEFT_PX - 40.0f;
                     const float diffTop = coverTop + 36.0f;
                     const float diffSize = INTRO_COVER_SIZE_PX;
-                    overlay->AddRectFilled(
-                        ImVec2(px(diffX), py(diffTop)),
-                        ImVec2(px(diffX + diffSize), py(diffTop + diffSize)),
-                        difficultyColor(intro.difficulty));
+                    if (upperDifficulty == "APPEND") {
+                        constexpr int appendStartR = 0xAD;
+                        constexpr int appendStartG = 0x9F;
+                        constexpr int appendStartB = 0xF6;
+                        constexpr int appendEndR = 0xEF;
+                        constexpr int appendEndG = 0x8D;
+                        constexpr int appendEndB = 0xDA;
+                        constexpr int appendMidR = (appendStartR + appendEndR) / 2;
+                        constexpr int appendMidG = (appendStartG + appendEndG) / 2;
+                        constexpr int appendMidB = (appendStartB + appendEndB) / 2;
+                        overlay->AddRectFilledMultiColor(
+                            ImVec2(px(diffX), py(diffTop)),
+                            ImVec2(px(diffX + diffSize), py(diffTop + diffSize)),
+                            IM_COL32(appendStartR, appendStartG, appendStartB, diffAlpha),
+                            IM_COL32(appendMidR, appendMidG, appendMidB, diffAlpha),
+                            IM_COL32(appendEndR, appendEndG, appendEndB, diffAlpha),
+                            IM_COL32(appendMidR, appendMidG, appendMidB, diffAlpha));
+                    } else {
+                        overlay->AddRectFilled(
+                            ImVec2(px(diffX), py(diffTop)),
+                            ImVec2(px(diffX + diffSize), py(diffTop + diffSize)),
+                            difficultyColor(upperDifficulty));
+                    }
                     overlay->AddText(
                         fonts.difficulty,
                         ps(INTRO_DIFF_DRAW_SIZE_PX),
@@ -3097,15 +3122,32 @@ void main() {
 
         if (hud.combo > 0) {
             constexpr float AP_PULSE_ANGULAR = 3.14159265359f * (4.0f / 3.0f);
+            auto comboGroupX = [&](float x) {
+                return COMBO_GROUP_CENTER_X + (x - COMBO_GROUP_CENTER_X) * COMBO_GROUP_SCALE;
+            };
+            auto comboGroupY = [&](float y) {
+                return COMBO_GROUP_CENTER_Y + (y - COMBO_GROUP_CENTER_Y) * COMBO_GROUP_SCALE + COMBO_GROUP_OFFSET_Y;
+            };
+            auto comboGroupS = [&](float v) { return v * COMBO_GROUP_SCALE; };
+
             const float apAlpha = clamp01((std::sin(chartTimeSec * AP_PULSE_ANGULAR) + 1.0f) * 0.5f);
+            const float comboTagGlowWidth = 197.0f * 0.67f;
+            const float comboTagGlowHeight = 79.0f * 0.67f;
             drawImage(
                 requireTexture(hudTextures, "combo_tag_glow"),
-                px(1634.0f - (197.0f * 0.67f) * 0.5f),
-                py((478.0f - 70.0f) - (79.0f * 0.67f) * 0.5f),
-                ps(197.0f * 0.67f),
-                ps(79.0f * 0.67f),
+                px(comboGroupX(1634.0f - comboTagGlowWidth * 0.5f)),
+                py(comboGroupY((478.0f - 70.0f) - comboTagGlowHeight * 0.5f)),
+                ps(comboGroupS(comboTagGlowWidth)),
+                ps(comboGroupS(comboTagGlowHeight)),
                 apAlpha);
-            drawImage(requireTexture(hudTextures, "combo_tag"), px(1634 - 127.0f * 0.5f), py(478 - 67.0f - 42.0f * 0.5f), ps(127), ps(42));
+            const float comboTagWidth = 127.0f;
+            const float comboTagHeight = 42.0f;
+            drawImage(
+                requireTexture(hudTextures, "combo_tag"),
+                px(comboGroupX(1634.0f - comboTagWidth * 0.5f)),
+                py(comboGroupY(478.0f - 67.0f - comboTagHeight * 0.5f)),
+                ps(comboGroupS(comboTagWidth)),
+                ps(comboGroupS(comboTagHeight)));
             const int latestComboIndex = upperBound(hudTimeline.comboTimes, chartTimeSec) - 1;
             float comboScale = COMBO_BASE_SCALE;
             float progress = 1000.0f;
@@ -3122,14 +3164,14 @@ void main() {
             for (size_t i = 0; i < comboText.size(); ++i) {
                 const char ch = comboText[i];
                 const float left = (static_cast<float>(i) - mid + 0.5f) * COMBO_DIGIT_STEP * comboScale;
-                const float centerX = 1634.0f + left;
+                const float centerX = comboGroupX(1634.0f + left);
                 const Texture& glow = requireTexture(hudTextures, std::string("combo_digit_b_") + ch);
                 const Texture& main = requireTexture(hudTextures, std::string("combo_digit_n_") + ch);
-                const float mainH = ps(134.0f * comboScale);
-                const float glowH = ps(150.0f * comboScale);
+                const float mainH = ps(comboGroupS(134.0f * comboScale));
+                const float glowH = ps(comboGroupS(150.0f * comboScale));
                 const float mainW = mainH * (static_cast<float>(main.width) / static_cast<float>(main.height));
                 const float glowW = glowH * (static_cast<float>(glow.width) / static_cast<float>(glow.height));
-                const float centerY = 478.0f + comboCenterYOffset * comboScale;
+                const float centerY = comboGroupY(478.0f + comboCenterYOffset * comboScale);
                 const float digitGlowAlpha = std::min(1.0f, 0.18f + apAlpha * 0.82f);
                 drawImage(glow, px(centerX) - glowW * 0.5f, py(centerY) - glowH * 0.5f, glowW, glowH, digitGlowAlpha);
                 drawImage(main, px(centerX) - mainW * 0.5f, py(centerY) - mainH * 0.5f, mainW, mainH);
@@ -3476,7 +3518,7 @@ extern "C"
             gPlayer.canvasSelector = (canvasSelector && *canvasSelector) ? canvasSelector : "#preview-canvas";
             gPlayer.renderer = std::make_unique<GlRenderer>(gPlayer.canvasSelector, width, height, dpr, gPlayer.effectOpacity);
             resize(width, height, dpr);
-            setPreviewConfig(0, 1, 1, 1, 10.5f, 0.74f, 0.5f, 1.0f, 1.0f);
+            setPreviewConfig(0, 1, 1, 1, 0, 10.5f, 0.74f, 0.5f, 1.0f, 1.0f);
             jsAudioEnsureEngine();
             gPlayer.initialized = true;
             gPlayer.sessionLoaded = false;
@@ -3661,6 +3703,7 @@ extern "C"
         int flickAnimation,
         int holdAnimation,
         int simultaneousLine,
+        int effectProfile,
         float noteSpeed,
         float holdAlpha,
         float guideAlpha,
@@ -3678,6 +3721,7 @@ extern "C"
             flickAnimation,
             holdAnimation,
             simultaneousLine,
+            effectProfile,
             noteSpeed,
             holdAlpha,
             guideAlpha,

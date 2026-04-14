@@ -3,6 +3,7 @@ export type PreviewRuntimeConfig = {
   flickAnimation: boolean
   holdAnimation: boolean
   simultaneousLine: boolean
+  effectProfile: 0 | 1
   noteSpeed: number
   holdAlpha: number
   guideAlpha: number

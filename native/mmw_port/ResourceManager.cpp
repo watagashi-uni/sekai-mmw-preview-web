@@ -247,13 +247,24 @@ namespace MikuMikuWorld
 		return id;
 	}
 
-	void ResourceManager::loadEmbeddedEffects()
+	void ResourceManager::loadEmbeddedEffects(int profile)
 	{
 		removeAllParticleEffects();
 		textures.clear();
 		textures.emplace_back("tex_note_common_all_v2", 3, 1024, 1024);
 
-		for (const auto& effect : mmw_preview::kEmbeddedEffects)
+		if (profile == 1)
+		{
+			for (const auto& effect : mmw_preview::kEmbeddedEffectsProfile1)
+			{
+				const json root = json::parse(effect.json);
+				const int rootId = readParticle(root);
+				effectNameToRootIdMap[effect.name] = rootId;
+			}
+			return;
+		}
+
+		for (const auto& effect : mmw_preview::kEmbeddedEffectsProfile0)
 		{
 			const json root = json::parse(effect.json);
 			const int rootId = readParticle(root);

@@ -31,7 +31,8 @@ html, body, #app {
 
 .app-layout {
   display: flex;
-  height: 100vh;
+  min-height: 100dvh;
+  height: auto;
   width: 100vw;
   max-width: 100%;
   overflow: hidden;
@@ -139,6 +140,7 @@ html, body, #app {
   overflow-x: hidden;
   padding: 32px;
   position: relative;
+  min-width: 0;
 }
 
 .hero {
@@ -419,6 +421,9 @@ html, body, #app {
 @media (max-width: 820px) {
   .app-layout {
     flex-direction: column;
+    min-height: 100dvh;
+    height: auto;
+    overflow-y: auto;
   }
   
   .app-sidebar {
@@ -459,8 +464,9 @@ html, body, #app {
   
   .app-main {
     padding: 16px;
-    width: 100vw;
+    width: 100%;
     max-width: 100%;
+    min-width: 0;
     box-sizing: border-box;
   }
 

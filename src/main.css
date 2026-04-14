@@ -975,6 +975,34 @@ input[type="range"] {
   line-height: 1.45;
 }
 
+.status-progress {
+  margin-top: 14px;
+}
+
+.status-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(144, 179, 216, 0.14);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.status-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8fc6f5 0%, #5f92d3 100%);
+  transition: width 160ms ease;
+}
+
+.status-progress-label {
+  margin-top: 8px;
+  color: rgba(226, 236, 245, 0.68);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
 .attribution-line {
   margin-top: 2px;
   color: rgba(226, 236, 245, 0.5);
@@ -1011,6 +1039,7 @@ input[type="range"] {
 
 .controls {
   width: min(100%, 1400px);
+  max-width: 100%;
   display: grid;
   gap: 14px;
   padding: 16px 18px 18px;
@@ -1091,6 +1120,7 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   color: rgba(232, 241, 248, 0.84);
 }
 
@@ -1128,6 +1158,16 @@ input[type="range"] {
   width: 152px;
   min-width: 120px;
   margin: 0;
+}
+
+.controls button,
+.controls select,
+.controls input,
+.controls output,
+.local-loader-table input,
+.local-loader-table td,
+.local-loader-table th {
+  max-width: 100%;
 }
 
 .background-brightness output {
@@ -1282,6 +1322,7 @@ input[type="range"] {
 
   .controls {
     padding: 14px;
+    width: 100%;
   }
 
   .controls-row {
@@ -1306,11 +1347,48 @@ input[type="range"] {
   }
 
   .note-speed {
-    flex-wrap: nowrap;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .background-brightness {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .background-brightness input[type='range'] {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+
+  .controls-row-speed {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controls-row-speed > label {
+    width: 100%;
   }
 
   .note-speed-step {
     padding: 6px 8px !important;
+  }
+
+  .controls button.has-icon {
+    min-width: 0;
+  }
+
+  .controls-row-toggle {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toggle-control {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .controls-row-fullscreen {

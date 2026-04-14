@@ -9,6 +9,7 @@ const defaultConfig: PreviewRuntimeConfig = {
   flickAnimation: true,
   holdAnimation: true,
   simultaneousLine: true,
+  effectProfile: 0,
   noteSpeed: 10.5,
   holdAlpha: 0.74,
   guideAlpha: 0.5,
@@ -19,6 +20,7 @@ const defaultConfig: PreviewRuntimeConfig = {
 
 const MIN_CHART_LEAD_IN_MS = 9000
 const FETCH_TIMEOUT_MS = 30000
+const PREVIEW_CONFIG_STORAGE_KEY = 'preview-runtime-config'
 const LOW_RESOLUTION_STORAGE_KEY = 'preview-low-resolution'
 const FONT_HINT_SEEN_STORAGE_KEY = 'preview-font-hint-seen'
 const MAX_RENDER_WIDTH = 1920
@@ -29,8 +31,7 @@ const UI_REFRESH_INTERVAL_MS = 50
 const CONTROLS_AUTO_HIDE_MS = 3000
 const AP_VIDEO_URL = '/assets/mmw/overlay/ap.mp4'
 const AP_DRAW_INTERVAL_MS = 1000 / 30
-const AP_ALPHA_GAMMA = 1.12
-const AP_COLOR_GAIN = 1.08
+const STATIC_RUNTIME_CACHE_NAME = 'mmw-static-runtime-v2'
 
 const SOUND_URLS = {
   perfect: '/assets/mmw/sound/se_live_perfect.mp3',
@@ -119,6 +120,12 @@ app.innerHTML = `
             <div class="status-card">
               <div class="status-title" id="status-title">正在初始化预览</div>
               <div class="status-text" id="status-text">加载 wasm 模块和原生 Overlay 资源中…</div>
+              <div class="status-progress" id="status-progress" hidden>
+                <div class="status-progress-track">
+                  <div class="status-progress-fill" id="status-progress-fill"></div>
+                </div>
+                <div class="status-progress-label" id="status-progress-label"></div>
+              </div>
             </div>
           </div>
           <div class="unlock-layer" id="unlock-layer" hidden>
@@ -273,6 +280,9 @@ const lockControlsButton = app.querySelector<HTMLButtonElement>('#lock-controls-
 const statusLayer = app.querySelector<HTMLDivElement>('#status-layer')!
 const statusTitle = app.querySelector<HTMLDivElement>('#status-title')!
 const statusText = app.querySelector<HTMLDivElement>('#status-text')!
+const statusProgress = app.querySelector<HTMLDivElement>('#status-progress')!
+const statusProgressFill = app.querySelector<HTMLDivElement>('#status-progress-fill')!
+const statusProgressLabel = app.querySelector<HTMLDivElement>('#status-progress-label')!
 const unlockLayer = app.querySelector<HTMLDivElement>('#unlock-layer')!
 const unlockButton = app.querySelector<HTMLButtonElement>('#unlock-button')!
 const bgmLoadingLayer = app.querySelector<HTMLDivElement>('#bgm-loading-layer')!
@@ -309,7 +319,6 @@ const localVocalInput = app.querySelector<HTMLInputElement>('#local-vocal-input'
 const localShowLockInput = app.querySelector<HTMLInputElement>('#local-show-lock-input')!
 const localLoaderSubmit = app.querySelector<HTMLButtonElement>('#local-loader-submit')!
 
-const apContext = apCanvas.getContext('2d', { willReadFrequently: true })
 const player = new MmwWasmPlayer()
 const resizeObserver = new ResizeObserver(() => {
   applyRenderSize()
@@ -396,7 +405,231 @@ let shouldShowInitialFontHint = false
 let apSequenceTriggered = false
 let apPlaybackActive = false
 let apLastDrawMs = 0
+let apVideoObjectUrl: string | null = null
 const debugErrors = (window.__MMW_DEBUG_ERRORS__ ??= [])
+
+currentConfig = readStoredPreviewConfig()
+
+type DownloadProgressState = {
+  completedItems: number
+  loadedBytes: number
+  totalBytes: number
+  totalItems: number
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback
+  }
+  return Math.min(max, Math.max(min, value))
+}
+
+function readStoredPreviewConfig() {
+  try {
+    const raw = window.localStorage.getItem(PREVIEW_CONFIG_STORAGE_KEY)
+    if (!raw) {
+      return { ...defaultConfig }
+    }
+    const parsed = JSON.parse(raw) as Partial<PreviewRuntimeConfig>
+    return {
+      ...defaultConfig,
+      mirror: parsed.mirror === true,
+      flickAnimation: parsed.flickAnimation !== false,
+      holdAnimation: parsed.holdAnimation !== false,
+      simultaneousLine: parsed.simultaneousLine !== false,
+      effectProfile: parsed.effectProfile === 1 ? 1 : 0,
+      noteSpeed: clampNumber(parsed.noteSpeed, defaultConfig.noteSpeed, 1, 12),
+      holdAlpha: clampNumber(parsed.holdAlpha, defaultConfig.holdAlpha, 0, 1),
+      guideAlpha: clampNumber(parsed.guideAlpha, defaultConfig.guideAlpha, 0, 1),
+      stageOpacity: clampNumber(parsed.stageOpacity, defaultConfig.stageOpacity, 0, 1),
+      backgroundBrightness: clampNumber(parsed.backgroundBrightness, defaultConfig.backgroundBrightness, 0.6, 1),
+      effectOpacity: clampNumber(parsed.effectOpacity, defaultConfig.effectOpacity, 0, 1),
+    } satisfies PreviewRuntimeConfig
+  } catch {
+    return { ...defaultConfig }
+  }
+}
+
+function persistPreviewConfig() {
+  try {
+    window.localStorage.setItem(PREVIEW_CONFIG_STORAGE_KEY, JSON.stringify(currentConfig))
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+class ApVideoRenderer {
+  private gl: WebGLRenderingContext | WebGL2RenderingContext | null = null
+
+  private ctx2d: CanvasRenderingContext2D | null = null
+
+  private program: WebGLProgram | null = null
+
+  private positionBuffer: WebGLBuffer | null = null
+
+  private texture: WebGLTexture | null = null
+
+  private texLocation: WebGLUniformLocation | null = null
+
+  constructor(private readonly canvas: HTMLCanvasElement) {
+    this.initWebgl()
+    if (!this.gl) {
+      this.ctx2d = canvas.getContext('2d')
+    }
+  }
+
+  resize() {
+    if (this.gl) {
+      this.gl.viewport(0, 0, this.canvas.width, this.canvas.height)
+      return
+    }
+    this.ctx2d?.clearRect(0, 0, this.canvas.width, this.canvas.height)
+  }
+
+  clear() {
+    if (this.gl) {
+      const gl = this.gl
+      gl.viewport(0, 0, this.canvas.width, this.canvas.height)
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      return
+    }
+    this.ctx2d?.clearRect(0, 0, this.canvas.width, this.canvas.height)
+  }
+
+  draw(video: HTMLVideoElement) {
+    if (this.gl && this.program && this.positionBuffer && this.texture) {
+      const gl = this.gl
+      gl.viewport(0, 0, this.canvas.width, this.canvas.height)
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      gl.useProgram(this.program)
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, this.texture)
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
+      if (this.texLocation) {
+        gl.uniform1i(this.texLocation, 0)
+      }
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+      return
+    }
+
+    if (!this.ctx2d) {
+      return
+    }
+    this.ctx2d.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    this.ctx2d.drawImage(video, 0, 0, this.canvas.width, this.canvas.height)
+  }
+
+  private initWebgl() {
+    const gl = this.canvas.getContext('webgl2', {
+      alpha: true,
+      antialias: false,
+      premultipliedAlpha: false,
+    }) ?? this.canvas.getContext('webgl', {
+      alpha: true,
+      antialias: false,
+      premultipliedAlpha: false,
+    })
+    if (!gl) {
+      return
+    }
+
+    const vertexSource = `
+      attribute vec2 a_position;
+      varying vec2 v_uv;
+
+      void main() {
+        v_uv = vec2(a_position.x * 0.5 + 0.5, 1.0 - (a_position.y * 0.5 + 0.5));
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `
+    const fragmentSource = `
+      precision mediump float;
+      varying vec2 v_uv;
+      uniform sampler2D u_texture;
+
+      void main() {
+        vec4 color = texture2D(u_texture, v_uv);
+        vec3 premultiplied = color.rgb * color.a;
+        float irate = max(max(premultiplied.r, premultiplied.g), premultiplied.b);
+        gl_FragColor = vec4(premultiplied, irate);
+      }
+    `
+    const vertexShader = this.compileShader(gl, gl.VERTEX_SHADER, vertexSource)
+    const fragmentShader = this.compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource)
+    if (!vertexShader || !fragmentShader) {
+      return
+    }
+
+    const program = gl.createProgram()
+    if (!program) {
+      return
+    }
+    gl.attachShader(program, vertexShader)
+    gl.attachShader(program, fragmentShader)
+    gl.linkProgram(program)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      gl.deleteProgram(program)
+      return
+    }
+
+    const positionBuffer = gl.createBuffer()
+    const texture = gl.createTexture()
+    if (!positionBuffer || !texture) {
+      return
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+
+    const positionLocation = gl.getAttribLocation(program, 'a_position')
+    if (positionLocation < 0) {
+      return
+    }
+
+    gl.useProgram(program)
+    gl.enableVertexAttribArray(positionLocation)
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
+
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+
+    this.gl = gl
+    this.program = program
+    this.positionBuffer = positionBuffer
+    this.texture = texture
+    this.texLocation = gl.getUniformLocation(program, 'u_texture')
+  }
+
+  private compileShader(
+    gl: WebGLRenderingContext | WebGL2RenderingContext,
+    type: number,
+    source: string,
+  ) {
+    const shader = gl.createShader(type)
+    if (!shader) {
+      return null
+    }
+    gl.shaderSource(shader, source)
+    gl.compileShader(shader)
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      gl.deleteShader(shader)
+      return null
+    }
+    return shader
+  }
+}
+
+const apRenderer = new ApVideoRenderer(apCanvas)
 
 function pushDebugError(error: unknown) {
   const text =
@@ -502,11 +735,30 @@ function setStatus(title: string, text: string) {
   statusTitle.textContent = title
   const detail = debugErrors.length > 0 ? `\n\n${debugErrors.slice(-4).join('\n\n')}` : ''
   statusText.textContent = `${text}${detail}`
+  setStatusProgress(null)
   statusLayer.hidden = false
 }
 
 function clearStatus() {
+  setStatusProgress(null)
   statusLayer.hidden = true
+}
+
+function setStatusProgress(progress: DownloadProgressState | null) {
+  if (!progress) {
+    statusProgress.hidden = true
+    statusProgressFill.style.width = '0%'
+    statusProgressLabel.textContent = ''
+    return
+  }
+
+  const knownTotal = progress.totalBytes > 0
+  const ratio = knownTotal ? Math.min(1, progress.loadedBytes / progress.totalBytes) : progress.completedItems / Math.max(progress.totalItems, 1)
+  statusProgress.hidden = false
+  statusProgressFill.style.width = `${Math.max(0, Math.min(100, ratio * 100))}%`
+  statusProgressLabel.textContent = knownTotal
+    ? `${Math.round(ratio * 100)}% · ${progress.completedItems}/${progress.totalItems} 项`
+    : `${progress.completedItems}/${progress.totalItems} 项`
 }
 
 function formatTime(value: number) {
@@ -514,6 +766,20 @@ function formatTime(value: number) {
   const minutes = Math.floor(safe / 60)
   const seconds = Math.floor(safe % 60)
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 B'
+  }
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = value
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  return `${size >= 100 || unitIndex === 0 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`
 }
 
 function setLocalLoaderVisible(visible: boolean) {
@@ -550,7 +816,55 @@ async function fetchText(url: string) {
   return response.text()
 }
 
-async function fetchArrayBuffer(url: string, timeoutMs: number) {
+async function readArrayBufferResponse(
+  url: string,
+  response: Response,
+  onProgress?: (loaded: number, total: number) => void,
+) {
+  if (typeof window !== 'undefined' && 'caches' in window && response.ok) {
+    const resolvedUrl = new URL(url, window.location.href)
+    if (resolvedUrl.origin === window.location.origin) {
+      const clone = response.clone()
+      void caches.open(STATIC_RUNTIME_CACHE_NAME).then((cache) => cache.put(resolvedUrl.href, clone)).catch(() => {
+        // Ignore cache seed failures.
+      })
+    }
+  }
+
+  const total = Number(response.headers.get('content-length') || 0)
+  if (!response.body) {
+    const buffer = await response.arrayBuffer()
+    onProgress?.(buffer.byteLength, total || buffer.byteLength)
+    return buffer
+  }
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let loaded = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    if (!value) {
+      continue
+    }
+    chunks.push(value)
+    loaded += value.byteLength
+    onProgress?.(loaded, total)
+  }
+
+  const out = new Uint8Array(loaded)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  onProgress?.(loaded, total || loaded)
+  return out.buffer
+}
+
+async function fetchArrayBuffer(url: string, timeoutMs: number, onProgress?: (loaded: number, total: number) => void) {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -558,7 +872,7 @@ async function fetchArrayBuffer(url: string, timeoutMs: number) {
     if (!response.ok) {
       throw new Error(`Failed to fetch resource: ${response.status} ${response.statusText}`)
     }
-    return response.arrayBuffer()
+    return readArrayBufferResponse(url, response, onProgress)
   } finally {
     window.clearTimeout(timer)
   }
@@ -593,26 +907,63 @@ async function ensureStaticResourcesLoaded() {
 
   staticResourcesPromise = (async () => {
     const manifest = buildStaticAssetManifest()
-    await Promise.all(
-      manifest.assets.map(async ({ key, url }) => {
-        const data = toBytes(await fetchArrayBuffer(url, FETCH_TIMEOUT_MS))
-        await player.preloadAsset(key, data)
-      }),
-    )
-    await Promise.all(
-      manifest.fonts.map(async ({ key, url }) => {
-        const data = toBytes(await fetchArrayBuffer(url, FETCH_TIMEOUT_MS))
-        await player.preloadFont(key, data)
-      }),
-    )
-    const soundResults = await Promise.allSettled(
-      manifest.sounds.map(async ({ key, url }) => {
-        const data = toBytes(await fetchArrayBuffer(url, FETCH_TIMEOUT_MS))
-        await player.preloadSound(key, data)
-      }),
-    )
+    const entries = [
+      ...manifest.assets.map((entry) => ({ ...entry, kind: 'asset' as const, label: '静态贴图' })),
+      ...manifest.fonts.map((entry) => ({ ...entry, kind: 'font' as const, label: '字体资源' })),
+      ...manifest.sounds.map((entry) => ({ ...entry, kind: 'sound' as const, label: '音效资源' })),
+      { key: 'ap-video', url: AP_VIDEO_URL, kind: 'ap' as const, label: 'AP 视频' },
+    ]
+    const progressByUrl = new Map<string, { loaded: number; total: number }>()
+    let completedItems = 0
+
+    const updateProgress = (label: string, url: string, loaded: number, total: number) => {
+      progressByUrl.set(url, { loaded, total })
+      let loadedBytes = 0
+      let totalBytes = 0
+      for (const item of progressByUrl.values()) {
+        loadedBytes += item.loaded
+        totalBytes += item.total
+      }
+      statusText.textContent =
+        totalBytes > 0
+          ? `正在下载并缓存 ${label}。已下载 ${formatBytes(loadedBytes)} / ${formatBytes(totalBytes)}。`
+          : `正在下载并缓存 ${label}。`
+      setStatusProgress({
+        completedItems,
+        loadedBytes,
+        totalBytes,
+        totalItems: entries.length,
+      })
+    }
+
+    const loadEntry = async (entry: (typeof entries)[number]) => {
+      const bytes = toBytes(await fetchArrayBuffer(entry.url, FETCH_TIMEOUT_MS, (loaded, total) => updateProgress(entry.label, entry.url, loaded, total)))
+      completedItems += 1
+      updateProgress(entry.label, entry.url, bytes.byteLength, bytes.byteLength)
+      if (entry.kind === 'asset') {
+        await player.preloadAsset(entry.key, bytes)
+        return
+      }
+      if (entry.kind === 'font') {
+        await player.preloadFont(entry.key, bytes)
+        return
+      }
+      if (entry.kind === 'sound') {
+        await player.preloadSound(entry.key, bytes)
+        return
+      }
+      setApVideoSource(bytes)
+    }
+
+    await Promise.all(entries.filter((entry) => entry.kind === 'asset').map(loadEntry))
+    await Promise.all(entries.filter((entry) => entry.kind === 'font').map(loadEntry))
+    const soundResults = await Promise.allSettled(entries.filter((entry) => entry.kind === 'sound').map(loadEntry))
+    const apResults = await Promise.allSettled(entries.filter((entry) => entry.kind === 'ap').map(loadEntry))
     if (soundResults.some((result) => result.status === 'rejected')) {
       resourceWarningMessage = '部分 key 音资源加载失败，可能会缺少音效。'
+    }
+    if (apResults.some((result) => result.status === 'rejected')) {
+      resourceWarningMessage = [resourceWarningMessage, 'AP 视频缓存失败，可能无法离线播放。'].filter(Boolean).join(' ')
     }
   })()
 
@@ -653,13 +1004,11 @@ function resizeApCanvas() {
   }
   apCanvas.width = width
   apCanvas.height = height
+  apRenderer.resize()
 }
 
 function clearApCanvas() {
-  if (!apContext) {
-    return
-  }
-  apContext.clearRect(0, 0, apCanvas.width, apCanvas.height)
+  apRenderer.clear()
 }
 
 function applyRenderSize() {
@@ -706,33 +1055,24 @@ function startApPlayback() {
 }
 
 function drawApFrame(nowMs: number) {
-  if (!apPlaybackActive || !apContext || apVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+  if (!apPlaybackActive || apVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
     return
   }
   if (nowMs - apLastDrawMs < AP_DRAW_INTERVAL_MS) {
     return
   }
   apLastDrawMs = nowMs
+  apRenderer.draw(apVideo)
+}
 
-  const width = apCanvas.width
-  const height = apCanvas.height
-  apContext.clearRect(0, 0, width, height)
-  apContext.drawImage(apVideo, 0, 0, width, height)
-
-  const frame = apContext.getImageData(0, 0, width, height)
-  const data = frame.data
-  for (let index = 0; index < data.length; index += 4) {
-    const r = data[index]
-    const g = data[index + 1]
-    const b = data[index + 2]
-    const maxChannel = Math.max(r, g, b)
-    const alpha = Math.round(Math.pow(maxChannel / 255, AP_ALPHA_GAMMA) * 255)
-    data[index] = Math.min(255, Math.round(r * AP_COLOR_GAIN))
-    data[index + 1] = Math.min(255, Math.round(g * AP_COLOR_GAIN))
-    data[index + 2] = Math.min(255, Math.round(b * AP_COLOR_GAIN))
-    data[index + 3] = alpha
+function setApVideoSource(bytes: Uint8Array) {
+  if (apVideoObjectUrl) {
+    URL.revokeObjectURL(apVideoObjectUrl)
+    apVideoObjectUrl = null
   }
-  apContext.putImageData(frame, 0, 0)
+  apVideoObjectUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }))
+  apVideo.src = apVideoObjectUrl
+  apVideo.load()
 }
 
 function updateUi(force = false) {
@@ -791,8 +1131,35 @@ async function loadPreparedPreview(params: UrlPreviewParams, susText: string, bg
 }
 
 async function loadPreviewFromUrlParams(params: UrlPreviewParams) {
+  const remoteResources = [
+    { key: 'sus', url: params.sus },
+    ...(params.bgm ? [{ key: 'bgm', url: params.bgm }] : []),
+    ...(params.cover ? [{ key: 'cover', url: params.cover }] : []),
+  ]
+  const progressByKey = new Map<string, { loaded: number; total: number }>()
+  const updateRemoteProgress = (key: string, loaded: number, total: number) => {
+    progressByKey.set(key, { loaded, total })
+    let loadedBytes = 0
+    let totalBytes = 0
+    let completedItems = 0
+    for (const item of progressByKey.values()) {
+      loadedBytes += item.loaded
+      totalBytes += item.total
+      if (item.total > 0 && item.loaded >= item.total) {
+        completedItems += 1
+      }
+    }
+    setStatus('正在下载谱面资源', totalBytes > 0 ? `已下载 ${formatBytes(loadedBytes)} / ${formatBytes(totalBytes)}。` : '正在下载 SUS、BGM 与曲绘…')
+    setStatusProgress({
+      completedItems,
+      loadedBytes,
+      totalBytes,
+      totalItems: remoteResources.length,
+    })
+  }
+
   const bgmPromise = params.bgm
-    ? fetchArrayBuffer(params.bgm, FETCH_TIMEOUT_MS)
+    ? fetchArrayBuffer(params.bgm, FETCH_TIMEOUT_MS, (loaded, total) => updateRemoteProgress('bgm', loaded, total))
         .then(toBytes)
         .catch((error: unknown) => {
           sessionWarningMessage = error instanceof Error ? `${error.message}，已切换为静音预览。` : 'BGM 加载失败，已切换为静音预览。'
@@ -801,7 +1168,7 @@ async function loadPreviewFromUrlParams(params: UrlPreviewParams) {
     : Promise.resolve<Uint8Array | null>(null)
 
   const coverPromise = params.cover
-    ? fetchArrayBuffer(params.cover, FETCH_TIMEOUT_MS)
+    ? fetchArrayBuffer(params.cover, FETCH_TIMEOUT_MS, (loaded, total) => updateRemoteProgress('cover', loaded, total))
         .then(toBytes)
         .catch((error: unknown) => {
           sessionWarningMessage = error instanceof Error ? `${error.message}，已使用默认背景。` : '曲绘加载失败，已使用默认背景。'
@@ -809,7 +1176,10 @@ async function loadPreviewFromUrlParams(params: UrlPreviewParams) {
         })
     : Promise.resolve<Uint8Array | null>(null)
 
-  const [susText, bgmBytes, coverBytes] = await Promise.all([fetchText(params.sus), bgmPromise, coverPromise])
+  const susPromise = fetchArrayBuffer(params.sus, FETCH_TIMEOUT_MS, (loaded, total) => updateRemoteProgress('sus', loaded, total)).then((buffer) =>
+    new TextDecoder().decode(buffer),
+  )
+  const [susText, bgmBytes, coverBytes] = await Promise.all([susPromise, bgmPromise, coverPromise])
   await loadPreparedPreview(params, susText, bgmBytes, coverBytes)
 }
 
@@ -1207,6 +1577,7 @@ function applyNoteSpeed(nextValue: number) {
     noteSpeed: clamped,
   }
   noteSpeedOutput.value = clamped.toFixed(1)
+  persistPreviewConfig()
   if (runtimeReady) {
     player.setPreviewConfig(currentConfig)
   }
@@ -1224,6 +1595,23 @@ function applyBackgroundBrightness(percent: number) {
   }
   backgroundBrightnessInput.value = String(clampedPercent)
   backgroundBrightnessOutput.value = `${clampedPercent}%`
+  persistPreviewConfig()
+  if (runtimeReady) {
+    player.setPreviewConfig(currentConfig)
+  }
+}
+
+function applyLowEffects(enabled: boolean) {
+  currentConfig = {
+    ...currentConfig,
+    flickAnimation: true,
+    holdAnimation: true,
+    simultaneousLine: true,
+    effectProfile: enabled ? 1 : 0,
+    effectOpacity: 1,
+  }
+  lowEffectsInput.checked = enabled
+  persistPreviewConfig()
   if (runtimeReady) {
     player.setPreviewConfig(currentConfig)
   }
@@ -1307,9 +1695,8 @@ function frameLoop() {
   window.requestAnimationFrame(frameLoop)
 }
 
-apVideo.src = AP_VIDEO_URL
 apVideo.loop = false
-apVideo.preload = 'auto'
+apVideo.preload = 'metadata'
 apVideo.playsInline = true
 apVideo.addEventListener('ended', () => {
   apPlaybackActive = false
@@ -1398,13 +1785,7 @@ backgroundBrightnessInput.addEventListener('input', () => {
 })
 
 lowEffectsInput.addEventListener('change', () => {
-  currentConfig = {
-    ...currentConfig,
-    effectOpacity: lowEffectsInput.checked ? 0.3 : 1,
-  }
-  if (runtimeReady) {
-    player.setPreviewConfig(currentConfig)
-  }
+  applyLowEffects(lowEffectsInput.checked)
 })
 
 lowResolutionInput.addEventListener('change', () => {
@@ -1484,6 +1865,10 @@ document.addEventListener('keydown', (event) => {
 })
 window.addEventListener('beforeunload', () => {
   resizeObserver.disconnect()
+  if (apVideoObjectUrl) {
+    URL.revokeObjectURL(apVideoObjectUrl)
+    apVideoObjectUrl = null
+  }
   player.dispose()
 })
 
@@ -1504,7 +1889,8 @@ try {
   shouldShowInitialFontHint = true
 }
 applyNoteSpeed(currentConfig.noteSpeed)
-applyBackgroundBrightness(100)
+applyBackgroundBrightness(currentConfig.backgroundBrightness * 100)
+applyLowEffects(currentConfig.effectProfile === 1)
 playToggle.innerHTML = renderTextIconButton(ICON_PLAY, '播放')
 playToggle.dataset.state = 'paused'
 applyFullscreenUi()

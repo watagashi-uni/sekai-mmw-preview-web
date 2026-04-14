@@ -240,12 +240,13 @@ export class MmwWasmPlayer {
     this.assertReady().ccall(
       'setPlayerPreviewConfig',
       null,
-      ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
+      ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
       [
         config.mirror ? 1 : 0,
         config.flickAnimation ? 1 : 0,
         config.holdAnimation ? 1 : 0,
         config.simultaneousLine ? 1 : 0,
+        config.effectProfile,
         config.noteSpeed,
         config.holdAlpha,
         config.guideAlpha,
