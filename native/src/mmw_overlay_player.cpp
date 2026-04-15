@@ -35,6 +35,7 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../vendor/mmw_preview/vendor/stb_image.h"
+#include "generated_resources.h"
 
 extern "C"
 {
@@ -48,9 +49,11 @@ extern "C"
         int holdAnimation,
         int simultaneousLine,
         int effectProfile,
+        int noteSkin,
         float noteSpeed,
         float holdAlpha,
         float guideAlpha,
+        float stageCover,
         float stageOpacity,
         float backgroundBrightness);
     int render(float chartTimeSec);
@@ -210,6 +213,9 @@ namespace
         bool imguiInitialized = false;
         bool audioUnlocked = false;
         float effectOpacity = 1.0f;
+        float stageOpacity = 1.0f;
+        float stageCover = 0.0f;
+        int noteSkin = 0;
         float chartPlayableEndSec = 0.0f;
         float previousChartTimeSec = -1000.0f;
         float scorePlusTriggerSec = -1000.0f;
@@ -1591,16 +1597,41 @@ namespace
             mBackgroundBrightness = std::clamp(backgroundBrightness, 0.0f, 1.0f);
         }
 
-        void loadAllTextures(
-            const std::unordered_map<std::string, BinaryBlob>& assetStore,
-            const BinaryBlob* coverBlob)
+        void setStageOpacity(float stageOpacity)
         {
-            destroyTexture(mBackground);
-            destroyTexture(mStage);
+            mStageOpacity = std::clamp(stageOpacity, 0.0f, 1.0f);
+        }
+
+        void setStageCover(float stageCover)
+        {
+            mStageCover = std::clamp(stageCover, 0.0f, 1.0f);
+        }
+
+        void loadNoteSkinTextures(const std::unordered_map<std::string, BinaryBlob>& assetStore, int noteSkin)
+        {
+            const int resolvedNoteSkin = noteSkin == 1 ? 1 : 0;
+            if (mActiveNoteSkin == resolvedNoteSkin && mNotes.id != 0 && mLongNoteLine.id != 0 && mTouchLine.id != 0) {
+                return;
+            }
+
             destroyTexture(mNotes);
             destroyTexture(mLongNoteLine);
             destroyTexture(mTouchLine);
+            mNotes = loadTexture(assetStore, resolvedNoteSkin == 1 ? "notes_02.png" : "notes_01.png");
+            mLongNoteLine = loadTexture(assetStore, resolvedNoteSkin == 1 ? "longNoteLine_02.png" : "longNoteLine_01.png");
+            mTouchLine = loadTexture(assetStore, resolvedNoteSkin == 1 ? "touchLine_eff_02.png" : "touchLine_eff_01.png");
+            mActiveNoteSkin = resolvedNoteSkin;
+        }
+
+        void loadAllTextures(
+            const std::unordered_map<std::string, BinaryBlob>& assetStore,
+            const BinaryBlob* coverBlob,
+            int noteSkin)
+        {
+            destroyTexture(mBackground);
+            destroyTexture(mStage);
             destroyTexture(mEffect);
+            mActiveNoteSkin = -1;
 
             if (coverBlob && !coverBlob->bytes.empty()) {
                 const auto cover = loadImageFromMemory(
@@ -1613,9 +1644,7 @@ namespace
                 mBackground = loadTexture(assetStore, "background_overlay.png");
             }
             mStage = loadTexture(assetStore, "stage.png");
-            mNotes = loadTexture(assetStore, "notes.png");
-            mLongNoteLine = loadTexture(assetStore, "longNoteLine.png");
-            mTouchLine = loadTexture(assetStore, "touchLine_eff.png");
+            loadNoteSkinTextures(assetStore, noteSkin);
             mEffect = loadTexture(assetStore, "effect.png");
 
             buildStaticVertices();
@@ -1639,20 +1668,22 @@ namespace
                     backgroundVertices[i + 2] *= brightness;
                 }
                 drawVertices(mBackground, backgroundVertices, false, BlendMode::Normal);
-                if (visibility >= 0.999f) {
-                    drawVertices(mStage, mStaticStageVertices, false, BlendMode::Normal);
-                } else if (visibility > 0.001f) {
+                if (visibility > 0.001f && mStageOpacity > 0.001f) {
                     std::vector<float> stageVertices = mStaticStageVertices;
+                    const float stageAlpha = visibility * mStageOpacity;
                     for (size_t i = 7; i < stageVertices.size(); i += FLOATS_PER_VERTEX) {
-                        stageVertices[i] *= visibility;
+                        stageVertices[i] *= stageAlpha;
                     }
                     drawVertices(mStage, stageVertices, false, BlendMode::Normal);
                 }
             }
 
             mRuntimeVisibility = visibility;
+            applyRuntimeStageCoverScissor(viewport);
             drawRuntime(packedQuads, quadCount);
+            clearRuntimeStageCoverScissor();
             mRuntimeVisibility = 1.0f;
+            drawStageCover(visibility);
         }
 
         [[nodiscard]] std::pair<int, int> framebufferSize() const
@@ -1685,6 +1716,8 @@ namespace
         float mDpr = 1.0f;
         float mEffectOpacity = 1.0f;
         float mBackgroundBrightness = 1.0f;
+        float mStageOpacity = 1.0f;
+        float mStageCover = 0.0f;
         std::string mCanvasSelector;
         WorldToClip mWorldToClip;
         EMSCRIPTEN_WEBGL_CONTEXT_HANDLE mContext = 0;
@@ -1699,6 +1732,7 @@ namespace
         Texture mLongNoteLine;
         Texture mTouchLine;
         Texture mEffect;
+        int mActiveNoteSkin = -1;
 
         std::vector<float> mStaticBackgroundVertices;
         std::vector<float> mStaticStageVertices;
@@ -1879,6 +1913,136 @@ void main() {
             pushVertex(out, clip[0], uv[0], color, 1.0f);
             pushVertex(out, clip[2], uv[2], color, 1.0f);
             pushVertex(out, clip[3], uv[3], color, 1.0f);
+        }
+
+        void drawStageCover(float visibility)
+        {
+            if (mStage.id == 0 || mStageCover <= 0.001f || mStageOpacity <= 0.001f || visibility <= 0.001f) {
+                return;
+            }
+
+            const float coverBottom = WORLD_STAGE_TOP + mStageCover * (1.0f - WORLD_STAGE_TOP);
+            const float spriteHeight = mStageCover * (STAGE_LANE_HEIGHT - STAGE_LANE_TOP);
+            std::vector<float> coverVertices;
+            coverVertices.reserve(6 * FLOATS_PER_VERTEX);
+            buildWorldQuad(
+                coverVertices,
+                mStage,
+                {
+                    Vec2{WORLD_STAGE_LEFT + WORLD_STAGE_WIDTH, WORLD_STAGE_TOP},
+                    Vec2{WORLD_STAGE_LEFT + WORLD_STAGE_WIDTH, coverBottom},
+                    Vec2{WORLD_STAGE_LEFT, coverBottom},
+                    Vec2{WORLD_STAGE_LEFT, WORLD_STAGE_TOP},
+                },
+                Rect{0.0f, 0.0f, STAGE_TEX_WIDTH, spriteHeight},
+                Color{0.0f, 0.0f, 0.0f, mStageOpacity * visibility});
+            drawVertices(mStage, coverVertices, false, BlendMode::Normal);
+            drawStageCoverDecoration(visibility);
+        }
+
+        void drawStageCoverDecoration(float visibility)
+        {
+            if (mNotes.id == 0 || mStageCover <= 0.001f || visibility <= 0.001f) {
+                return;
+            }
+
+            constexpr size_t transformIndex = 16;
+            constexpr size_t spriteIndex = 36;
+            constexpr float noteHeight = 75.0f / STAGE_LANE_HEIGHT / 2.0f;
+            const auto& sprite = mmw_preview::kNoteSprites[spriteIndex];
+            const float margin = 0.12f * (1.0f - mStageCover);
+            const float scale = WORLD_STAGE_TOP + mStageCover * (1.0f - WORLD_STAGE_TOP);
+            const auto quad = scaleQuad(
+                applySpriteTransform(
+                    transformIndex,
+                    perspectiveQuad(-6.0f - margin, 6.0f + margin, 1.0f + noteHeight, 1.0f - noteHeight)),
+                scale);
+
+            std::vector<float> lineVertices;
+            lineVertices.reserve(6 * FLOATS_PER_VERTEX);
+            buildWorldQuad(
+                lineVertices,
+                mNotes,
+                quad,
+                Rect{sprite.x1, sprite.y1, sprite.x2, sprite.y2},
+                Color{1.0f, 1.0f, 1.0f, visibility});
+            drawVertices(mNotes, lineVertices, false, BlendMode::Normal);
+        }
+
+        [[nodiscard]] std::array<Vec2, 4> perspectiveQuad(float left, float right, float top, float bottom) const
+        {
+            return {{
+                Vec2{right * top, top},
+                Vec2{right * bottom, bottom},
+                Vec2{left * bottom, bottom},
+                Vec2{left * top, top},
+            }};
+        }
+
+        [[nodiscard]] std::array<float, 4> mulRowVec(
+            const std::array<float, 64>& transform,
+            size_t offset,
+            const std::array<float, 4>& vector) const
+        {
+            std::array<float, 4> output{};
+            for (size_t column = 0; column < 4; ++column) {
+                for (size_t row = 0; row < 4; ++row) {
+                    output[column] += vector[row] * transform[offset + row * 4 + column];
+                }
+            }
+            return output;
+        }
+
+        [[nodiscard]] std::array<Vec2, 4> applySpriteTransform(size_t index, const std::array<Vec2, 4>& input) const
+        {
+            const auto& transform = mmw_preview::kSpriteTransforms[index];
+            const std::array<float, 4> xs{input[0].x, input[1].x, input[2].x, input[3].x};
+            const std::array<float, 4> ys{input[0].y, input[1].y, input[2].y, input[3].y};
+            const auto txx = mulRowVec(transform, 0, xs);
+            const auto txy = mulRowVec(transform, 16, xs);
+            const auto tyx = mulRowVec(transform, 32, ys);
+            const auto tyy = mulRowVec(transform, 48, ys);
+
+            return {{
+                Vec2{txx[0] + txy[0], tyx[0] + tyy[0]},
+                Vec2{txx[1] + txy[1], tyx[1] + tyy[1]},
+                Vec2{txx[2] + txy[2], tyx[2] + tyy[2]},
+                Vec2{txx[3] + txy[3], tyx[3] + tyy[3]},
+            }};
+        }
+
+        [[nodiscard]] std::array<Vec2, 4> scaleQuad(const std::array<Vec2, 4>& input, float scale) const
+        {
+            std::array<Vec2, 4> output = input;
+            for (auto& point : output) {
+                point.x *= scale;
+                point.y *= scale;
+            }
+            return output;
+        }
+
+        void applyRuntimeStageCoverScissor(const ViewportRect& viewport) const
+        {
+            if (mStageCover <= 0.001f || viewport.width <= 0 || viewport.height <= 0) {
+                glDisable(GL_SCISSOR_TEST);
+                return;
+            }
+
+            const float coverBottom = WORLD_STAGE_TOP + mStageCover * (1.0f - WORLD_STAGE_TOP);
+            const float clipY = mWorldToClip.convert(0.0f, coverBottom).y;
+            const float normalizedTop = std::clamp(clipY * 0.5f + 0.5f, 0.0f, 1.0f);
+            const int scissorHeight = std::clamp(
+                static_cast<int>(std::lround(normalizedTop * static_cast<float>(viewport.height))),
+                0,
+                viewport.height);
+
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(viewport.x, viewport.y, viewport.width, scissorHeight);
+        }
+
+        void clearRuntimeStageCoverScissor() const
+        {
+            glDisable(GL_SCISSOR_TEST);
         }
 
         void pushVertex(std::vector<float>& out, const Vec2& pos, const Vec2& uv, const Color& color, float reciprocalW)
@@ -3518,7 +3682,7 @@ extern "C"
             gPlayer.canvasSelector = (canvasSelector && *canvasSelector) ? canvasSelector : "#preview-canvas";
             gPlayer.renderer = std::make_unique<GlRenderer>(gPlayer.canvasSelector, width, height, dpr, gPlayer.effectOpacity);
             resize(width, height, dpr);
-            setPreviewConfig(0, 1, 1, 1, 0, 10.5f, 0.74f, 0.5f, 1.0f, 1.0f);
+            setPreviewConfig(0, 1, 1, 1, 0, 0, 10.5f, 0.74f, 0.5f, 0.0f, 1.0f, 1.0f);
             jsAudioEnsureEngine();
             gPlayer.initialized = true;
             gPlayer.sessionLoaded = false;
@@ -3618,7 +3782,9 @@ extern "C"
                 coverBlobPtr = &coverBlob;
             }
 
-            gPlayer.renderer->loadAllTextures(gPlayer.assets, coverBlobPtr);
+            gPlayer.renderer->setStageOpacity(gPlayer.stageOpacity);
+            gPlayer.renderer->setStageCover(gPlayer.stageCover);
+            gPlayer.renderer->loadAllTextures(gPlayer.assets, coverBlobPtr, gPlayer.noteSkin);
             rebuildOverlayResources(coverBlobPtr);
 
             const std::string metadataTitle = getMetadataTitle() ? std::string(getMetadataTitle()) : std::string();
@@ -3704,17 +3870,27 @@ extern "C"
         int holdAnimation,
         int simultaneousLine,
         int effectProfile,
+        int noteSkin,
         float noteSpeed,
         float holdAlpha,
         float guideAlpha,
+        float stageCover,
         float stageOpacity,
         float backgroundBrightness,
         float effectOpacity)
     {
         gPlayer.effectOpacity = std::clamp(effectOpacity, 0.0f, 1.0f);
+        gPlayer.stageOpacity = std::clamp(stageOpacity, 0.0f, 1.0f);
+        gPlayer.stageCover = std::clamp(stageCover, 0.0f, 1.0f);
+        gPlayer.noteSkin = noteSkin == 1 ? 1 : 0;
         if (gPlayer.renderer) {
             gPlayer.renderer->setEffectOpacity(gPlayer.effectOpacity);
+            gPlayer.renderer->setStageOpacity(gPlayer.stageOpacity);
+            gPlayer.renderer->setStageCover(gPlayer.stageCover);
             gPlayer.renderer->setBackgroundBrightness(std::clamp(backgroundBrightness, 0.0f, 1.0f));
+            if (gPlayer.sessionLoaded) {
+                gPlayer.renderer->loadNoteSkinTextures(gPlayer.assets, gPlayer.noteSkin);
+            }
         }
         setPreviewConfig(
             mirror,
@@ -3722,9 +3898,11 @@ extern "C"
             holdAnimation,
             simultaneousLine,
             effectProfile,
+            gPlayer.noteSkin,
             noteSpeed,
             holdAlpha,
             guideAlpha,
+            gPlayer.stageCover,
             stageOpacity,
             backgroundBrightness);
     }

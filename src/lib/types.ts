@@ -4,9 +4,11 @@ export type PreviewRuntimeConfig = {
   holdAnimation: boolean
   simultaneousLine: boolean
   effectProfile: 0 | 1
+  noteSkin: 0 | 1
   noteSpeed: number
   holdAlpha: number
   guideAlpha: number
+  stageCover: number
   stageOpacity: number
   backgroundBrightness: number
   effectOpacity: number

@@ -10,9 +10,11 @@ const defaultConfig: PreviewRuntimeConfig = {
   holdAnimation: true,
   simultaneousLine: true,
   effectProfile: 0,
+  noteSkin: 0,
   noteSpeed: 10.5,
   holdAlpha: 0.74,
   guideAlpha: 0.5,
+  stageCover: 0,
   stageOpacity: 1,
   backgroundBrightness: 1,
   effectOpacity: 1,
@@ -176,11 +178,31 @@ app.innerHTML = `
               <input id="background-brightness-input" type="range" min="60" max="100" step="1" value="100" />
               <output id="background-brightness-output">100%</output>
             </label>
+            <label class="compact-select" aria-label="noteSkin">
+              Note Skin
+              <select id="note-skin-select">
+                <option value="0">Notes 01</option>
+                <option value="1">Notes 02</option>
+              </select>
+            </label>
+            <label class="stage-cover" aria-label="stageCover">
+              上隐
+              <input id="stage-cover-input" type="range" min="0" max="100" step="1" value="0" />
+              <output id="stage-cover-output">0%</output>
+            </label>
           </div>
           <div class="controls-row controls-row-toggle">
             <label class="toggle-control">
               <input id="low-effects-input" type="checkbox" />
               低特效
+            </label>
+            <label class="toggle-control">
+              <input id="mirror-input" type="checkbox" />
+              Mirror
+            </label>
+            <label class="toggle-control">
+              <input id="simultaneous-line-input" type="checkbox" checked />
+              双押线
             </label>
             <label class="toggle-control">
               <input id="low-resolution-input" type="checkbox" />
@@ -298,7 +320,12 @@ const noteSpeedPlusPointOneButton = app.querySelector<HTMLButtonElement>('#note-
 const noteSpeedPlusOneButton = app.querySelector<HTMLButtonElement>('#note-speed-plus-one-button')!
 const backgroundBrightnessInput = app.querySelector<HTMLInputElement>('#background-brightness-input')!
 const backgroundBrightnessOutput = app.querySelector<HTMLOutputElement>('#background-brightness-output')!
+const noteSkinSelect = app.querySelector<HTMLSelectElement>('#note-skin-select')!
+const stageCoverInput = app.querySelector<HTMLInputElement>('#stage-cover-input')!
+const stageCoverOutput = app.querySelector<HTMLOutputElement>('#stage-cover-output')!
 const lowEffectsInput = app.querySelector<HTMLInputElement>('#low-effects-input')!
+const mirrorInput = app.querySelector<HTMLInputElement>('#mirror-input')!
+const simultaneousLineInput = app.querySelector<HTMLInputElement>('#simultaneous-line-input')!
 const lowResolutionInput = app.querySelector<HTMLInputElement>('#low-resolution-input')!
 const webFullscreenToggle = app.querySelector<HTMLButtonElement>('#web-fullscreen-toggle')!
 const fullscreenToggle = app.querySelector<HTMLButtonElement>('#fullscreen-toggle')!
@@ -434,16 +461,18 @@ function readStoredPreviewConfig() {
     return {
       ...defaultConfig,
       mirror: parsed.mirror === true,
-      flickAnimation: parsed.flickAnimation !== false,
-      holdAnimation: parsed.holdAnimation !== false,
+      flickAnimation: true,
+      holdAnimation: true,
       simultaneousLine: parsed.simultaneousLine !== false,
       effectProfile: parsed.effectProfile === 1 ? 1 : 0,
+      noteSkin: parsed.noteSkin === 1 ? 1 : 0,
       noteSpeed: clampNumber(parsed.noteSpeed, defaultConfig.noteSpeed, 1, 12),
       holdAlpha: clampNumber(parsed.holdAlpha, defaultConfig.holdAlpha, 0, 1),
       guideAlpha: clampNumber(parsed.guideAlpha, defaultConfig.guideAlpha, 0, 1),
-      stageOpacity: clampNumber(parsed.stageOpacity, defaultConfig.stageOpacity, 0, 1),
+      stageCover: clampNumber(parsed.stageCover, defaultConfig.stageCover, 0, 1),
+      stageOpacity: defaultConfig.stageOpacity,
       backgroundBrightness: clampNumber(parsed.backgroundBrightness, defaultConfig.backgroundBrightness, 0.6, 1),
-      effectOpacity: clampNumber(parsed.effectOpacity, defaultConfig.effectOpacity, 0, 1),
+      effectOpacity: defaultConfig.effectOpacity,
     } satisfies PreviewRuntimeConfig
   } catch {
     return { ...defaultConfig }
@@ -664,8 +693,14 @@ function buildStaticAssetManifest() {
     { key: 'background_overlay.png', url: '/assets/mmw/background_overlay.png' },
     { key: 'stage.png', url: '/assets/mmw/stage.png' },
     { key: 'notes.png', url: '/assets/mmw/notes.png' },
+    { key: 'notes_01.png', url: '/assets/mmw/notes_01.png' },
+    { key: 'notes_02.png', url: '/assets/mmw/notes_02.png' },
     { key: 'longNoteLine.png', url: '/assets/mmw/longNoteLine.png' },
+    { key: 'longNoteLine_01.png', url: '/assets/mmw/longNoteLine_01.png' },
+    { key: 'longNoteLine_02.png', url: '/assets/mmw/longNoteLine_02.png' },
     { key: 'touchLine_eff.png', url: '/assets/mmw/touchLine_eff.png' },
+    { key: 'touchLine_eff_01.png', url: '/assets/mmw/touchLine_eff_01.png' },
+    { key: 'touchLine_eff_02.png', url: '/assets/mmw/touchLine_eff_02.png' },
     { key: 'effect.png', url: '/assets/mmw/effect.png' },
     { key: 'overlay/bggen/v3/base.png', url: '/assets/mmw/overlay/bggen/v3/base.png' },
     { key: 'overlay/bggen/v3/bottom.png', url: '/assets/mmw/overlay/bggen/v3/bottom.png' },
@@ -1601,12 +1636,60 @@ function applyBackgroundBrightness(percent: number) {
   }
 }
 
+function applyNoteSkin(nextSkin: number) {
+  const clampedSkin = nextSkin === 1 ? 1 : 0
+  currentConfig = {
+    ...currentConfig,
+    noteSkin: clampedSkin,
+  }
+  noteSkinSelect.value = String(clampedSkin)
+  persistPreviewConfig()
+  if (runtimeReady) {
+    player.setPreviewConfig(currentConfig)
+  }
+}
+
+function applyStageCover(percent: number) {
+  const clampedPercent = Math.min(100, Math.max(0, Math.round(percent)))
+  currentConfig = {
+    ...currentConfig,
+    stageCover: clampedPercent / 100,
+  }
+  stageCoverInput.value = String(clampedPercent)
+  stageCoverOutput.value = `${clampedPercent}%`
+  persistPreviewConfig()
+  if (runtimeReady) {
+    player.setPreviewConfig(currentConfig)
+  }
+}
+
+function applyMirror(enabled: boolean) {
+  currentConfig = {
+    ...currentConfig,
+    mirror: enabled,
+  }
+  mirrorInput.checked = enabled
+  persistPreviewConfig()
+  if (runtimeReady) {
+    player.setPreviewConfig(currentConfig)
+  }
+}
+
+function applySimultaneousLine(enabled: boolean) {
+  currentConfig = {
+    ...currentConfig,
+    simultaneousLine: enabled,
+  }
+  simultaneousLineInput.checked = enabled
+  persistPreviewConfig()
+  if (runtimeReady) {
+    player.setPreviewConfig(currentConfig)
+  }
+}
+
 function applyLowEffects(enabled: boolean) {
   currentConfig = {
     ...currentConfig,
-    flickAnimation: true,
-    holdAnimation: true,
-    simultaneousLine: true,
     effectProfile: enabled ? 1 : 0,
     effectOpacity: 1,
   }
@@ -1784,8 +1867,24 @@ backgroundBrightnessInput.addEventListener('input', () => {
   applyBackgroundBrightness(Number(backgroundBrightnessInput.value))
 })
 
+noteSkinSelect.addEventListener('change', () => {
+  applyNoteSkin(Number(noteSkinSelect.value))
+})
+
+stageCoverInput.addEventListener('input', () => {
+  applyStageCover(Number(stageCoverInput.value))
+})
+
 lowEffectsInput.addEventListener('change', () => {
   applyLowEffects(lowEffectsInput.checked)
+})
+
+mirrorInput.addEventListener('change', () => {
+  applyMirror(mirrorInput.checked)
+})
+
+simultaneousLineInput.addEventListener('change', () => {
+  applySimultaneousLine(simultaneousLineInput.checked)
 })
 
 lowResolutionInput.addEventListener('change', () => {
@@ -1890,6 +1989,10 @@ try {
 }
 applyNoteSpeed(currentConfig.noteSpeed)
 applyBackgroundBrightness(currentConfig.backgroundBrightness * 100)
+applyNoteSkin(currentConfig.noteSkin)
+applyStageCover(currentConfig.stageCover * 100)
+applyMirror(currentConfig.mirror)
+applySimultaneousLine(currentConfig.simultaneousLine)
 applyLowEffects(currentConfig.effectProfile === 1)
 playToggle.innerHTML = renderTextIconButton(ICON_PLAY, '播放')
 playToggle.dataset.state = 'paused'

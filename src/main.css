@@ -1154,6 +1154,26 @@ input[type="range"] {
   gap: 8px;
 }
 
+.compact-select {
+  min-width: 0;
+  gap: 8px;
+}
+
+.compact-select select {
+  min-width: 118px;
+}
+
+.stage-cover {
+  min-width: 0;
+  gap: 8px;
+}
+
+.stage-cover input[type='range'] {
+  width: 152px;
+  min-width: 120px;
+  margin: 0;
+}
+
 .background-brightness input[type='range'] {
   width: 152px;
   min-width: 120px;
@@ -1171,6 +1191,14 @@ input[type="range"] {
 }
 
 .background-brightness output {
+  min-width: 4ch;
+  text-align: right;
+  color: rgba(233, 243, 251, 0.92);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.stage-cover output {
   min-width: 4ch;
   text-align: right;
   color: rgba(233, 243, 251, 0.92);
@@ -1358,7 +1386,20 @@ input[type="range"] {
     flex-wrap: wrap;
   }
 
+  .compact-select,
+  .stage-cover {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .background-brightness input[type='range'] {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+
+  .stage-cover input[type='range'] {
     width: auto;
     min-width: 0;
     flex: 1 1 140px;

@@ -382,9 +382,11 @@ namespace mmw_preview
         bool holdAnimation{true};
         bool simultaneousLine{true};
         int effectProfile{};
+        int noteSkin{};
         float noteSpeed{10.5f};
         float holdAlpha{1.0f};
         float guideAlpha{0.8f};
+        float stageCover{};
         float stageOpacity{1.0f};
         float backgroundBrightness{1.0f};
     };
@@ -2389,9 +2391,11 @@ extern "C"
         int holdAnimation,
         int simultaneousLine,
         int effectProfile,
+        int noteSkin,
         float noteSpeed,
         float holdAlpha,
         float guideAlpha,
+        float stageCover,
         float stageOpacity,
         float backgroundBrightness)
     {
@@ -2399,15 +2403,18 @@ extern "C"
 
         const bool noteSpeedChanged = std::abs(gRuntime.config.noteSpeed - noteSpeed) > 0.0001f;
         const int resolvedEffectProfile = effectProfile == 1 ? 1 : 0;
+        const int resolvedNoteSkin = noteSkin == 1 ? 1 : 0;
         const bool effectProfileChanged = gRuntime.config.effectProfile != resolvedEffectProfile;
         gRuntime.config.mirror = mirror != 0;
         gRuntime.config.flickAnimation = flickAnimation != 0;
         gRuntime.config.holdAnimation = holdAnimation != 0;
         gRuntime.config.simultaneousLine = simultaneousLine != 0;
         gRuntime.config.effectProfile = resolvedEffectProfile;
+        gRuntime.config.noteSkin = resolvedNoteSkin;
         gRuntime.config.noteSpeed = noteSpeed;
         gRuntime.config.holdAlpha = holdAlpha;
         gRuntime.config.guideAlpha = guideAlpha;
+        gRuntime.config.stageCover = std::clamp(stageCover, 0.0f, 1.0f);
         gRuntime.config.stageOpacity = stageOpacity;
         gRuntime.config.backgroundBrightness = backgroundBrightness;
         mmw::config.pvMirrorScore = gRuntime.config.mirror;
