@@ -16,6 +16,7 @@ export type PreviewRuntimeConfig = {
 
 export type UrlPreviewParams = {
   sus: string
+  customScoreJson: string | null
   bgm: string | null
   cover: string | null
   rawOffsetMs: number | null
@@ -29,6 +30,8 @@ export type UrlPreviewParams = {
   description2: string | null
   extra: string | null
 }
+
+export type ScoreTextFormat = 'sus' | 'custom-score-json'
 
 export type TransportState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'error'
 

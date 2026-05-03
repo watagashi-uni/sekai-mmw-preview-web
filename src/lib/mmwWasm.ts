@@ -1,5 +1,5 @@
 import { mmwWasmFilename } from '../generated/mmwWasmAsset'
-import type { PreviewRuntimeConfig, SessionMetadata, TransportState, WasmPlayerSnapshot } from './types'
+import type { PreviewRuntimeConfig, ScoreTextFormat, SessionMetadata, TransportState, WasmPlayerSnapshot } from './types'
 
 type CcallOptions = {
   async?: boolean
@@ -47,7 +47,8 @@ function pushDebugError(message: unknown) {
 }
 
 type LoadSessionOptions = {
-  susText: string
+  scoreText: string
+  scoreFormat?: ScoreTextFormat
   sourceOffsetMs: number
   effectiveLeadInMs: number
   bgmBytes: Uint8Array | null
@@ -143,7 +144,7 @@ export class MmwWasmPlayer {
 
   async loadSession(options: LoadSessionOptions) {
     const module = this.assertReady()
-    const susPtr = this.allocString(options.susText)
+    const scorePtr = this.allocString(options.scoreText)
     const titlePtr = this.allocString(options.metadata.title ?? '')
     const lyricistPtr = this.allocString(options.metadata.lyricist ?? '')
     const composerPtr = this.allocString(options.metadata.composer ?? '')
@@ -154,8 +155,9 @@ export class MmwWasmPlayer {
     const cover = this.allocBytes(options.coverBytes)
 
     try {
+      const loadFunction = options.scoreFormat === 'custom-score-json' ? 'loadCustomScoreJsonSession' : 'loadSession'
       const result = await this.call<number>(
-        'loadSession',
+        loadFunction,
         'number',
         [
           'number',
@@ -173,7 +175,7 @@ export class MmwWasmPlayer {
           'number',
         ],
         [
-          susPtr,
+          scorePtr,
           options.sourceOffsetMs,
           options.effectiveLeadInMs,
           bgm.ptr,
@@ -193,7 +195,7 @@ export class MmwWasmPlayer {
         throw new Error(this.getWarningText() || 'Failed to load preview session.')
       }
     } finally {
-      this.freePtr(susPtr)
+      this.freePtr(scorePtr)
       this.freePtr(titlePtr)
       this.freePtr(lyricistPtr)
       this.freePtr(composerPtr)

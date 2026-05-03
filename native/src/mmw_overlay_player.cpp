@@ -43,6 +43,7 @@ extern "C"
     void resize(int width, int height, float dpr);
     int loadSusText(const char* susText, int normalizedOffsetMs);
     int loadSusTextPrecise(const char* susText, double normalizedOffsetMs);
+    int loadCustomScoreJsonTextPrecise(const char* jsonText, double normalizedOffsetMs);
     void setPreviewConfig(
         int mirror,
         int flickAnimation,
@@ -3773,6 +3774,108 @@ extern "C"
 
             if (loadSusTextPrecise(susText, -gPlayer.effectiveLeadInSec * 1000.0) != 1) {
                 throw std::runtime_error(std::string("loadSusTextPrecise failed: ") + getLastError());
+            }
+
+            BinaryBlob coverBlob;
+            const BinaryBlob* coverBlobPtr = nullptr;
+            if (coverData && coverLength > 0) {
+                coverBlob.bytes.assign(coverData, coverData + coverLength);
+                coverBlobPtr = &coverBlob;
+            }
+
+            gPlayer.renderer->setStageOpacity(gPlayer.stageOpacity);
+            gPlayer.renderer->setStageCover(gPlayer.stageCover);
+            gPlayer.renderer->loadAllTextures(gPlayer.assets, coverBlobPtr, gPlayer.noteSkin);
+            rebuildOverlayResources(coverBlobPtr);
+
+            const std::string metadataTitle = getMetadataTitle() ? std::string(getMetadataTitle()) : std::string();
+            const std::string metadataArtist = getMetadataArtist() ? std::string(getMetadataArtist()) : std::string();
+            gPlayer.hudTimeline = std::make_unique<HudTimelineNative>(buildHudTimeline());
+            gPlayer.introCard = std::make_unique<IntroCardState>(
+                buildIntroCardState(gPlayer.sessionMetadata, metadataTitle, metadataArtist, coverBlobPtr != nullptr));
+
+            gPlayer.chartEndSec = getChartEndTimeSec();
+            gPlayer.chartPlayableEndSec = static_cast<float>(gPlayer.chartEndSec);
+            gPlayer.durationSec = std::max(1.0, gPlayer.chartEndSec + gPlayer.effectiveLeadInSec + 1.0);
+            gPlayer.apStartSec = gPlayer.effectiveLeadInSec + gPlayer.chartEndSec + 1.0;
+            gPlayer.scorePlusTriggerSec = -1000.0f;
+            gPlayer.scorePlusValue = 0;
+            gPlayer.lastScoreEventIndex = -1;
+            gPlayer.previousChartTimeSec = -1000.0f;
+            gPlayer.nextHitEventIndex = 0;
+            gPlayer.playbackRate = 1.0;
+
+            jsAudioSetDuration(gPlayer.durationSec);
+            jsAudioSetStartOffset(gPlayer.audioStartDelaySec);
+            for (const auto& [soundKey, soundBlob] : gPlayer.sounds) {
+                if (soundBlob.bytes.empty()) {
+                    continue;
+                }
+                if (jsAudioLoadSound(soundKey.c_str(), soundBlob.bytes.data(), static_cast<int>(soundBlob.bytes.size())) == 0) {
+                    const char* audioError = jsAudioGetLastError();
+                    if (audioError && *audioError) {
+                        gPlayer.lastError = audioError;
+                        break;
+                    }
+                }
+            }
+            if (jsAudioLoadBgm(bgmData, bgmLength) == 0) {
+                const char* audioError = jsAudioGetLastError();
+                if (audioError && *audioError) {
+                    gPlayer.lastError = audioError;
+                }
+            }
+            jsAudioSeek(0.0);
+            jsAudioPause();
+            resetHitCursor(static_cast<float>(-gPlayer.effectiveLeadInSec), true, false);
+            gPlayer.sessionLoaded = true;
+            return 1;
+        } catch (const std::exception& exception) {
+            gPlayer.lastError = exception.what();
+            gPlayer.sessionLoaded = false;
+            return 0;
+        }
+    }
+
+    EMSCRIPTEN_KEEPALIVE int loadCustomScoreJsonSession(
+        const char* jsonText,
+        double sourceOffsetMs,
+        double effectiveLeadInMs,
+        const std::uint8_t* bgmData,
+        int bgmLength,
+        const std::uint8_t* coverData,
+        int coverLength,
+        const char* title,
+        const char* lyricist,
+        const char* composer,
+        const char* arranger,
+        const char* vocal,
+        const char* difficulty)
+    {
+        try {
+            if (!gPlayer.initialized || !gPlayer.renderer) {
+                throw std::runtime_error("Player has not been initialized.");
+            }
+            if (!jsonText) {
+                throw std::runtime_error("Missing custom score JSON text.");
+            }
+
+            gPlayer.lastError.clear();
+            gPlayer.sessionMetadata = {
+                title ? title : "",
+                lyricist ? lyricist : "",
+                composer ? composer : "",
+                arranger ? arranger : "",
+                vocal ? vocal : "",
+                difficulty ? difficulty : "",
+            };
+
+            gPlayer.sourceOffsetSec = sourceOffsetMs / 1000.0;
+            gPlayer.effectiveLeadInSec = std::max(gPlayer.sourceOffsetSec, effectiveLeadInMs / 1000.0);
+            gPlayer.audioStartDelaySec = std::max(0.0, gPlayer.effectiveLeadInSec - gPlayer.sourceOffsetSec);
+
+            if (loadCustomScoreJsonTextPrecise(jsonText, -gPlayer.effectiveLeadInSec * 1000.0) != 1) {
+                throw std::runtime_error(std::string("loadCustomScoreJsonTextPrecise failed: ") + getLastError());
             }
 
             BinaryBlob coverBlob;

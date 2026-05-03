@@ -91,8 +91,11 @@ export function parseUrlPreviewParams(url: URL): UrlPreviewParams {
   const sus =
     (config ? pickFirstNonEmptyFromConfig(config, ['s', 'sus']) : null) ??
     url.searchParams.get('sus')
-  if (!sus) {
-    throw new Error('Missing required `sus` (or `config.s`) query parameter.')
+  const customScoreJson =
+    (config ? pickFirstNonEmptyFromConfig(config, ['j', 'json', 'customScoreJson', 'scoreJson']) : null) ??
+    pickFirstNonEmptyParam(url, ['json', 'customScoreJson', 'scoreJson'])
+  if (!sus && !customScoreJson) {
+    throw new Error('Missing required `sus`/`json` query parameter.')
   }
 
   const offsetText =
@@ -108,7 +111,8 @@ export function parseUrlPreviewParams(url: URL): UrlPreviewParams {
   }
 
   return {
-    sus,
+    sus: sus ?? '',
+    customScoreJson,
     bgm:
       (config ? pickFirstNonEmptyFromConfig(config, ['b', 'bgm']) : null) ??
       url.searchParams.get('bgm'),

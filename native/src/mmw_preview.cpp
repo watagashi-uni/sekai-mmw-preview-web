@@ -24,6 +24,7 @@
 #endif
 
 #include "generated_resources.h"
+#include "../vendor/nlohmann/json.hpp"
 #include "../mmw_port/ApplicationConfiguration.h"
 #include "../mmw_port/EffectView.h"
 #include "../mmw_port/ResourceManager.h"
@@ -344,6 +345,7 @@ namespace mmw_preview
         int endID{};
         EaseType ease{EaseType::Linear};
         bool isGuide{};
+        bool critical{};
         ptrdiff_t tailStepIndex{};
         double headTime{};
         double tailTime{};
@@ -1309,6 +1311,8 @@ namespace mmw_preview
         });
     }
 
+#include "custom_score_json.h"
+
     int getFlickArrowSpriteIndex(const Note& note)
     {
         const int startIndex = note.critical ? SPR_FLICK_ARROW_CRITICAL_01 : SPR_FLICK_ARROW_01;
@@ -1919,6 +1923,7 @@ namespace mmw_preview
         float startTime = activeTime;
         struct HoldStepDraw
         {
+            int ID{};
             int tick{};
             double time{};
             float left{};
@@ -1927,6 +1932,7 @@ namespace mmw_preview
         };
 
         HoldStepDraw head{
+            startNote.ID,
             startNote.tick,
             accumulateScaledDuration(startNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges),
             laneToLeft(static_cast<float>(startNote.lane)),
@@ -1943,6 +1949,7 @@ namespace mmw_preview
             const Note& tailNote = score.notes.at(tailStep.ID);
             auto easeFunction = getEaseFunction(head.ease);
             HoldStepDraw tail{
+                tailNote.ID,
                 tailNote.tick,
                 accumulateScaledDuration(tailNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges),
                 laneToLeft(static_cast<float>(tailNote.lane)),
@@ -1955,6 +1962,7 @@ namespace mmw_preview
                 holdNote.end,
                 head.ease,
                 holdNote.isGuide(),
+                score.notes.at(head.ID).critical,
                 tailIndex,
                 head.time,
                 tail.time,
@@ -2189,7 +2197,7 @@ namespace mmw_preview
             const bool holdActivated = currentTime >= segment.activeTime;
             const bool segmentActivated = currentTime >= segment.startTime;
 
-            const bool critical = holdStart.critical;
+            const bool critical = segment.critical;
             const TextureId texture = segment.isGuide ? TextureId::TouchLine : TextureId::LongNoteLine;
             const auto& atlas = segment.isGuide ? kTouchLineSprites : kLongNoteSprites;
             const int spriteIndex = critical ? 3 : 1;
@@ -2327,11 +2335,37 @@ namespace mmw_preview
             gRuntime.packedQuads.push_back(static_cast<float>(quad.texture));
         }
     }
+
+    void finishLoadedScore()
+    {
+        calculateDrawData(gRuntime.drawData, gRuntime.score);
+        calculateHitEvents();
+        calculateHudEvents();
+        initializeEffects();
+        rebuildEffectScore();
+        gRuntime.lastError.clear();
+        gRuntime.loaded = true;
+    }
+
+    void clearLoadedScoreAfterError(const std::exception& exception)
+    {
+        gRuntime.lastError = exception.what();
+        gRuntime.loaded = false;
+        gRuntime.score = {};
+        gRuntime.drawData.clear();
+        gRuntime.renderQuads.clear();
+        gRuntime.packedQuads.clear();
+        gRuntime.hitEvents.clear();
+        gRuntime.packedHitEvents.clear();
+        gRuntime.hudEvents.clear();
+        gRuntime.packedHudEvents.clear();
+    }
 }
 
 extern "C"
 {
     EMSCRIPTEN_KEEPALIVE int loadSusTextPrecise(const char* susText, double normalizedOffsetMs);
+    EMSCRIPTEN_KEEPALIVE int loadCustomScoreJsonTextPrecise(const char* jsonText, double normalizedOffsetMs);
 
     EMSCRIPTEN_KEEPALIVE int init(int)
     {
@@ -2362,25 +2396,27 @@ extern "C"
             const std::string text(susText);
             const SUS sus = SusParser().parseText(text);
             gRuntime.score = susToScore(sus, static_cast<float>(normalizedOffsetMs));
-            calculateDrawData(gRuntime.drawData, gRuntime.score);
-            calculateHitEvents();
-            calculateHudEvents();
-            initializeEffects();
-            rebuildEffectScore();
-            gRuntime.lastError.clear();
-            gRuntime.loaded = true;
+            finishLoadedScore();
             return 1;
         } catch (const std::exception& exception) {
-            gRuntime.lastError = exception.what();
-            gRuntime.loaded = false;
-            gRuntime.score = {};
-            gRuntime.drawData.clear();
-            gRuntime.renderQuads.clear();
-            gRuntime.packedQuads.clear();
-            gRuntime.hitEvents.clear();
-            gRuntime.packedHitEvents.clear();
-            gRuntime.hudEvents.clear();
-            gRuntime.packedHudEvents.clear();
+            clearLoadedScoreAfterError(exception);
+            return 0;
+        }
+    }
+
+    EMSCRIPTEN_KEEPALIVE int loadCustomScoreJsonTextPrecise(const char* jsonText, double normalizedOffsetMs)
+    {
+        using namespace mmw_preview;
+
+        try {
+            if (jsonText == nullptr) {
+                throw std::runtime_error("Missing custom score JSON text");
+            }
+            gRuntime.score = custom_score_json::parse(std::string(jsonText), static_cast<float>(normalizedOffsetMs));
+            finishLoadedScore();
+            return 1;
+        } catch (const std::exception& exception) {
+            clearLoadedScoreAfterError(exception);
             return 0;
         }
     }

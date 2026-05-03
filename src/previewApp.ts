@@ -1,7 +1,7 @@
 import './main.css'
 
 import { MmwWasmPlayer } from './lib/mmwWasm'
-import type { PreviewRuntimeConfig, SessionMetadata, UrlPreviewParams, WasmPlayerSnapshot } from './lib/types'
+import type { PreviewRuntimeConfig, ScoreTextFormat, SessionMetadata, UrlPreviewParams, WasmPlayerSnapshot } from './lib/types'
 import { normalizeOffsetMs, parseUrlPreviewParams } from './lib/url'
 
 const defaultConfig: PreviewRuntimeConfig = {
@@ -50,6 +50,7 @@ const SOUND_URLS = {
 
 type BootLocalPayload = {
   susFile: File
+  scoreFormat?: ScoreTextFormat
   bgmFile: File | null
   coverFile: File | null
   rawOffsetMs: number | null
@@ -64,6 +65,24 @@ type BootLocalPayload = {
 
 type LocalPreviewInput = Omit<BootLocalPayload, 'showLockControlsButton'> & {
   showLockControlsButton?: boolean
+}
+
+type PostedPreviewPayload = {
+  type?: string
+  requestId?: string
+  scoreText?: string
+  scoreFormat?: ScoreTextFormat
+  susText?: string
+  customScoreJson?: string | Record<string, unknown>
+  bgm?: string | null
+  cover?: string | null
+  rawOffsetMs?: number | null
+  title?: string | null
+  lyricist?: string | null
+  composer?: string | null
+  arranger?: string | null
+  vocal?: string | null
+  difficulty?: string | null
 }
 
 declare global {
@@ -222,8 +241,8 @@ app.innerHTML = `
               <table class="local-loader-table">
                 <tbody>
                   <tr>
-                    <th><label for="local-sus-input">SUS 谱面</label></th>
-                    <td><input id="local-sus-input" type="file" accept=".sus,text/plain" required /></td>
+                    <th><label for="local-sus-input">谱面文件</label></th>
+                    <td><input id="local-sus-input" type="file" accept=".sus,.json,text/plain,application/json" required /></td>
                   </tr>
                   <tr>
                     <th><label for="local-bgm-input">BGM（可选）</label></th>
@@ -416,6 +435,10 @@ let resourceWarningMessage = ''
 let sessionWarningMessage = ''
 let staticResourcesPromise: Promise<void> | null = null
 let pendingPlayAfterUnlock = false
+let postMessageLoadSerial = 0
+let postMessageLoaderInstalled = false
+let pendingPostedPreviewPayload: PostedPreviewPayload | null = null
+let handledPostedPreviewRequestId: string | null = null
 let lastUiRefreshMs = 0
 let lastTouchEndMs = 0
 let isFullscreen = false
@@ -1136,19 +1159,47 @@ function updateUi(force = false) {
   warningText.textContent = composeWarningText()
 }
 
-async function loadPreparedPreview(params: UrlPreviewParams, susText: string, bgmBytes: Uint8Array | null, coverBytes: Uint8Array | null) {
+function inferScoreFormatFromFile(file: File): ScoreTextFormat {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.json')) {
+    return 'custom-score-json'
+  }
+  return 'sus'
+}
+
+function getScoreUrl(params: UrlPreviewParams) {
+  if (params.customScoreJson) {
+    return { key: 'json', url: params.customScoreJson, format: 'custom-score-json' as const }
+  }
+  return { key: 'sus', url: params.sus, format: 'sus' as const }
+}
+
+function getSourceOffsetMs(params: UrlPreviewParams, scoreText: string, scoreFormat: ScoreTextFormat) {
+  if (scoreFormat === 'custom-score-json') {
+    return params.rawOffsetMs ?? 0
+  }
+  return -normalizeOffsetMs(params.rawOffsetMs, scoreText)
+}
+
+async function loadPreparedPreview(
+  params: UrlPreviewParams,
+  scoreText: string,
+  scoreFormat: ScoreTextFormat,
+  bgmBytes: Uint8Array | null,
+  coverBytes: Uint8Array | null,
+) {
   previewReady = false
   pendingPlayAfterUnlock = false
   sessionWarningMessage = ''
   stopApPlayback(true)
 
-  const normalizedOffsetMs = normalizeOffsetMs(params.rawOffsetMs, susText)
-  const sourceOffsetMs = -normalizedOffsetMs
+  const sourceOffsetMs = getSourceOffsetMs(params, scoreText, scoreFormat)
   const effectiveLeadInMs = Math.max(sourceOffsetMs, MIN_CHART_LEAD_IN_MS)
 
-  setStatus('正在初始化谱面', '正在把 SUS、背景、HUD 和音频交给 wasm。')
+  setStatus('正在初始化谱面', `正在把${scoreFormat === 'custom-score-json' ? '自制 JSON' : ' SUS'}、背景、HUD 和音频交给 wasm。`)
   await player.loadSession({
-    susText,
+    scoreText,
+    scoreFormat,
     sourceOffsetMs,
     effectiveLeadInMs,
     bgmBytes,
@@ -1166,8 +1217,9 @@ async function loadPreparedPreview(params: UrlPreviewParams, susText: string, bg
 }
 
 async function loadPreviewFromUrlParams(params: UrlPreviewParams) {
+  const scoreResource = getScoreUrl(params)
   const remoteResources = [
-    { key: 'sus', url: params.sus },
+    scoreResource,
     ...(params.bgm ? [{ key: 'bgm', url: params.bgm }] : []),
     ...(params.cover ? [{ key: 'cover', url: params.cover }] : []),
   ]
@@ -1184,7 +1236,7 @@ async function loadPreviewFromUrlParams(params: UrlPreviewParams) {
         completedItems += 1
       }
     }
-    setStatus('正在下载谱面资源', totalBytes > 0 ? `已下载 ${formatBytes(loadedBytes)} / ${formatBytes(totalBytes)}。` : '正在下载 SUS、BGM 与曲绘…')
+    setStatus('正在下载谱面资源', totalBytes > 0 ? `已下载 ${formatBytes(loadedBytes)} / ${formatBytes(totalBytes)}。` : '正在下载谱面、BGM 与曲绘…')
     setStatusProgress({
       completedItems,
       loadedBytes,
@@ -1211,15 +1263,141 @@ async function loadPreviewFromUrlParams(params: UrlPreviewParams) {
         })
     : Promise.resolve<Uint8Array | null>(null)
 
-  const susPromise = fetchArrayBuffer(params.sus, FETCH_TIMEOUT_MS, (loaded, total) => updateRemoteProgress('sus', loaded, total)).then((buffer) =>
+  const scorePromise = fetchArrayBuffer(scoreResource.url, FETCH_TIMEOUT_MS, (loaded, total) => updateRemoteProgress(scoreResource.key, loaded, total)).then((buffer) =>
     new TextDecoder().decode(buffer),
   )
-  const [susText, bgmBytes, coverBytes] = await Promise.all([susPromise, bgmPromise, coverPromise])
-  await loadPreparedPreview(params, susText, bgmBytes, coverBytes)
+  const [scoreText, bgmBytes, coverBytes] = await Promise.all([scorePromise, bgmPromise, coverPromise])
+  await loadPreparedPreview(params, scoreText, scoreResource.format, bgmBytes, coverBytes)
+}
+
+function isPostedPreviewPayload(value: unknown): value is PostedPreviewPayload {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+  const payload = value as PostedPreviewPayload
+  return payload.type === 'sekai-mmw-preview:load'
+}
+
+function isPostMessagePreviewRequest(url: URL) {
+  return url.searchParams.get('post') === '1' || url.searchParams.get('postMessage') === '1'
+}
+
+function announcePostMessageReady() {
+  window.opener?.postMessage({ type: 'sekai-mmw-preview:ready' }, '*')
+}
+
+function resolvePostedScore(payload: PostedPreviewPayload) {
+  if (typeof payload.scoreText === 'string' && payload.scoreText.trim()) {
+    return {
+      scoreText: payload.scoreText,
+      scoreFormat: payload.scoreFormat ?? 'sus',
+    }
+  }
+  if (typeof payload.susText === 'string' && payload.susText.trim()) {
+    return {
+      scoreText: payload.susText,
+      scoreFormat: 'sus' as const,
+    }
+  }
+  if (payload.customScoreJson) {
+    return {
+      scoreText: typeof payload.customScoreJson === 'string' ? payload.customScoreJson : JSON.stringify(payload.customScoreJson),
+      scoreFormat: 'custom-score-json' as const,
+    }
+  }
+  throw new Error('postMessage 谱面内容为空')
+}
+
+async function fetchPostedResource(url: string | null | undefined, key: 'bgm' | 'cover') {
+  if (!url) {
+    return null
+  }
+  try {
+    return await fetchArrayBuffer(url, FETCH_TIMEOUT_MS).then(toBytes)
+  } catch (error) {
+    sessionWarningMessage = error instanceof Error
+      ? `${error.message}，${key === 'bgm' ? '已切换为静音预览。' : '已使用默认背景。'}`
+      : key === 'bgm'
+        ? 'BGM 加载失败，已切换为静音预览。'
+        : '曲绘加载失败，已使用默认背景。'
+    return null
+  }
+}
+
+async function loadPreviewFromPostedPayload(payload: PostedPreviewPayload) {
+  if (!runtimeReady) {
+    pendingPostedPreviewPayload = payload
+    setLocalLoaderVisible(false)
+    setStatus('正在等待预览器初始化', '已收到父页面发送的谱面，正在等待 wasm 准备完成。')
+    return
+  }
+  if (payload.requestId && payload.requestId === handledPostedPreviewRequestId) {
+    return
+  }
+  if (payload.requestId) {
+    handledPostedPreviewRequestId = payload.requestId
+  }
+  const serial = ++postMessageLoadSerial
+  const { scoreText, scoreFormat } = resolvePostedScore(payload)
+  setLocalLoaderVisible(false)
+  setStatus('正在接收谱面', '正在从父页面接收谱面数据。')
+
+  const params: UrlPreviewParams = {
+    sus: scoreFormat === 'sus' ? 'postmessage://chart.sus' : '',
+    customScoreJson: scoreFormat === 'custom-score-json' ? 'postmessage://chart.json' : null,
+    bgm: payload.bgm ?? null,
+    cover: payload.cover ?? null,
+    rawOffsetMs: typeof payload.rawOffsetMs === 'number' ? payload.rawOffsetMs : null,
+    title: payload.title ?? null,
+    lyricist: payload.lyricist ?? null,
+    composer: payload.composer ?? null,
+    arranger: payload.arranger ?? null,
+    vocal: payload.vocal ?? null,
+    difficulty: payload.difficulty ?? null,
+    description1: null,
+    description2: null,
+    extra: null,
+  }
+
+  setStatus('正在下载附加资源', '正在下载 BGM 与曲绘。')
+  const [bgmBytes, coverBytes] = await Promise.all([
+    fetchPostedResource(payload.bgm, 'bgm'),
+    fetchPostedResource(payload.cover, 'cover'),
+  ])
+  if (serial !== postMessageLoadSerial) {
+    return
+  }
+  await loadPreparedPreview(params, scoreText, scoreFormat, bgmBytes, coverBytes)
+}
+
+function installPostMessageLoader() {
+  if (postMessageLoaderInstalled) {
+    return
+  }
+  postMessageLoaderInstalled = true
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.opener && event.source !== window.parent) {
+      return
+    }
+    if (!isPostedPreviewPayload(event.data)) {
+      return
+    }
+    void loadPreviewFromPostedPayload(event.data).catch((error) => {
+      pushDebugError(error)
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      currentSnapshot = { ...EMPTY_SNAPSHOT, transportState: 'error', warnings: message }
+      setStatus('postMessage 预览加载失败', message)
+      updateUi(true)
+    })
+  })
+  if (runtimeReady) {
+    announcePostMessageReady()
+  }
 }
 
 async function loadPreviewFromLocalInput(input: LocalPreviewInput) {
-  const [susText, bgmBytes, coverBytes] = await Promise.all([
+  const scoreFormat = input.scoreFormat ?? inferScoreFormatFromFile(input.susFile)
+  const [scoreText, bgmBytes, coverBytes] = await Promise.all([
     input.susFile.text(),
     input.bgmFile ? input.bgmFile.arrayBuffer().then(toBytes) : Promise.resolve<Uint8Array | null>(null),
     input.coverFile ? input.coverFile.arrayBuffer().then(toBytes) : Promise.resolve<Uint8Array | null>(null),
@@ -1231,7 +1409,8 @@ async function loadPreviewFromLocalInput(input: LocalPreviewInput) {
   }
 
   const params: UrlPreviewParams = {
-    sus: `local:///${encodeURIComponent(input.susFile.name || 'chart.sus')}`,
+    sus: scoreFormat === 'custom-score-json' ? '' : `local:///${encodeURIComponent(input.susFile.name || 'chart.sus')}`,
+    customScoreJson: scoreFormat === 'custom-score-json' ? `local:///${encodeURIComponent(input.susFile.name || 'chart.json')}` : null,
     bgm: input.bgmFile ? `local:///${encodeURIComponent(input.bgmFile.name || 'song')}` : null,
     cover: input.coverFile ? `local:///${encodeURIComponent(input.coverFile.name || 'cover')}` : null,
     rawOffsetMs: input.rawOffsetMs,
@@ -1246,14 +1425,14 @@ async function loadPreviewFromLocalInput(input: LocalPreviewInput) {
     extra: null,
   }
 
-  await loadPreparedPreview(params, susText, bgmBytes, coverBytes)
+  await loadPreparedPreview(params, scoreText, scoreFormat, bgmBytes, coverBytes)
 }
 
 async function handleLocalLoaderSubmit(event: SubmitEvent) {
   event.preventDefault()
   const susFile = localSusInput.files?.[0]
   if (!susFile) {
-    setStatus('缺少 SUS 文件', '请选择本地 SUS 谱面文件。')
+    setStatus('缺少谱面文件', '请选择本地 SUS 或自制 JSON 谱面文件。')
     return
   }
 
@@ -1261,6 +1440,7 @@ async function handleLocalLoaderSubmit(event: SubmitEvent) {
   try {
     await loadPreviewFromLocalInput({
       susFile,
+      scoreFormat: inferScoreFormatFromFile(susFile),
       bgmFile: localBgmInput.files?.[0] ?? null,
       coverFile: localCoverInput.files?.[0] ?? null,
       rawOffsetMs: readOptionalOffsetMsInput(localOffsetInput),
@@ -1702,6 +1882,8 @@ function applyLowEffects(enabled: boolean) {
 
 async function bootstrap() {
   try {
+    installPostMessageLoader()
+    const currentUrl = new URL(window.location.href)
     setStatus(
       '正在加载 MMW 资源',
       shouldShowInitialFontHint
@@ -1723,6 +1905,7 @@ async function bootstrap() {
     runtimeReady = true
     resizeObserver.observe(previewPanel)
     applyRenderSize()
+    announcePostMessageReady()
 
     const bootLocalPayload = takeBootLocalPayload()
     if (bootLocalPayload) {
@@ -1731,7 +1914,21 @@ async function bootstrap() {
       return
     }
 
-    const currentUrl = new URL(window.location.href)
+    if (pendingPostedPreviewPayload) {
+      const payload = pendingPostedPreviewPayload
+      pendingPostedPreviewPayload = null
+      await loadPreviewFromPostedPayload(payload)
+      return
+    }
+
+    if (isPostMessagePreviewRequest(currentUrl)) {
+      clearStatus()
+      setLocalLoaderVisible(false)
+      setStatus('等待谱面数据', '正在等待父页面发送 3D 预览数据。')
+      updateUi(true)
+      return
+    }
+
     if ([...currentUrl.searchParams.keys()].length === 0) {
       clearStatus()
       setLocalLoaderVisible(true)

@@ -3,6 +3,7 @@ import { setupPwaUpdatePrompt } from './lib/pwa'
 
 type LocalBootPayload = {
   susFile: File
+  scoreFormat?: 'sus' | 'custom-score-json'
   bgmFile: File | null
   coverFile: File | null
   rawOffsetMs: number | null
@@ -39,7 +40,7 @@ const bootPath = normalizePath(bootUrl.pathname)
 setupPwaUpdatePrompt()
 
 function hasPreviewQuery(url: URL) {
-  const keys = ['sus', 'config', 'cfg', 'bgm', 'cover', 'offset']
+  const keys = ['sus', 'json', 'customScoreJson', 'scoreJson', 'config', 'cfg', 'bgm', 'cover', 'offset', 'post', 'postMessage']
   return keys.some((key) => url.searchParams.has(key))
 }
 
@@ -128,7 +129,7 @@ function renderHomePage() {
       <img src="/assets/landing/chart.webp" alt="chart preview" />
       <div class="hero-body">
         <h1 class="hero-title">Project SEKAI 音游谱面预览工具</h1>
-        <p class="hero-text">支持 SUS 解析、完整 HUD、开场信息与特效。你可以快速加载自制谱面，或直接跳转官服歌曲浏览页面进行选曲预览。</p>
+        <p class="hero-text">支持 SUS 与谱面 Maker 自制 JSON 解析、完整 HUD、开场信息与特效。你可以快速加载自制谱面，或直接跳转官服歌曲浏览页面进行选曲预览。</p>
         <div class="home-actions">
           <a class="action-button" href="/upload">加载自制谱</a>
           <a class="action-button secondary" href="https://viewer.unipjsk.com/musics" target="_blank" rel="noreferrer">预览官服歌曲</a>
@@ -143,12 +144,12 @@ function renderUploadPage() {
   renderShell(`
     <section class="upload-card">
       <h1 class="upload-title">加载自制谱</h1>
-      <p class="upload-text">选择本地文件并填写基础信息，然后直接进入预览页。上传只在本地浏览器中处理，不会上传到服务器。</p>
+      <p class="upload-text">选择本地 SUS 或谱面 Maker 自制 JSON 文件并填写基础信息，然后直接进入预览页。上传只在本地浏览器中处理，不会上传到服务器。</p>
       <form class="upload-form" id="upload-form">
         <div class="upload-grid">
           <div class="upload-row file">
-            <label for="upload-sus">SUS 谱面（必填）</label>
-            <input id="upload-sus" type="file" accept=".sus,text/plain" required />
+            <label for="upload-sus">谱面文件（SUS / JSON，必填）</label>
+            <input id="upload-sus" type="file" accept=".sus,.json,text/plain,application/json" required />
           </div>
           <div class="upload-row file">
             <label for="upload-bgm">BGM（可选）</label>
@@ -228,7 +229,7 @@ function renderUploadPage() {
     event.preventDefault()
     const susFile = susInput.files?.[0]
     if (!susFile) {
-      errorNode.textContent = '请选择 SUS 谱面文件。'
+      errorNode.textContent = '请选择 SUS 或 JSON 谱面文件。'
       return
     }
 
@@ -238,6 +239,7 @@ function renderUploadPage() {
 
     const payload: LocalBootPayload = {
       susFile,
+      scoreFormat: susFile.name.toLowerCase().endsWith('.json') ? 'custom-score-json' : 'sus',
       bgmFile: bgmInput.files?.[0] ?? null,
       coverFile: coverInput.files?.[0] ?? null,
       rawOffsetMs: readOptionalOffset(offsetInput),
