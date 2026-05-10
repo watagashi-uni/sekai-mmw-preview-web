@@ -122,7 +122,7 @@ namespace custom_score_json
             return SlideKind::End;
         }
         const int base = note.noteBaseType;
-        if (base == 2 || base == 8 || base == 9 || base == 10) {
+        if (base == 2 || base == 8 || base == 9 || base == 10 || note.category == 6) {
             return SlideKind::Start;
         }
         if (base == 1 || base == 3 || base == 11 || base == 12 || base == 13) {
@@ -141,7 +141,8 @@ namespace custom_score_json
 
     [[nodiscard]] bool isTraceNote(const RawNote& note)
     {
-        return note.noteBaseType == 4 || note.noteBaseType == 11 || note.category == 4 || note.category == 8;
+        return note.noteBaseType == 4 || note.noteBaseType == 8 || note.noteBaseType == 11
+            || note.category == 4 || note.category == 6 || note.category == 8;
     }
 
     [[nodiscard]] bool isTraceFlickNote(const RawNote& note)
