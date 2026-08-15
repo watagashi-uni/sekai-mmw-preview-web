@@ -151,6 +151,8 @@ export class MmwWasmPlayer {
     const arrangerPtr = this.allocString(options.metadata.arranger ?? '')
     const vocalPtr = this.allocString(options.metadata.vocal ?? '')
     const difficultyPtr = this.allocString(options.metadata.difficulty ?? '')
+    const scoreTitlePtr = this.allocString(options.metadata.scoreTitle ?? '')
+    const scoreCreatorPtr = this.allocString(options.metadata.scoreCreator ?? '')
     const bgm = this.allocBytes(options.bgmBytes)
     const cover = this.allocBytes(options.coverBytes)
 
@@ -160,6 +162,9 @@ export class MmwWasmPlayer {
         loadFunction,
         'number',
         [
+          'number',
+          'number',
+          'number',
           'number',
           'number',
           'number',
@@ -188,6 +193,9 @@ export class MmwWasmPlayer {
           arrangerPtr,
           vocalPtr,
           difficultyPtr,
+          options.metadata.customScoreInfo ? 1 : 0,
+          scoreTitlePtr,
+          scoreCreatorPtr,
         ],
         true,
       )
@@ -202,6 +210,8 @@ export class MmwWasmPlayer {
       this.freePtr(arrangerPtr)
       this.freePtr(vocalPtr)
       this.freePtr(difficultyPtr)
+      this.freePtr(scoreTitlePtr)
+      this.freePtr(scoreCreatorPtr)
       this.freePtr(bgm.ptr)
       this.freePtr(cover.ptr)
     }

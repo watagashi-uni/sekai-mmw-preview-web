@@ -365,46 +365,6 @@ input[type="range"] {
   transition: opacity var(--intro-exit-fade-duration) cubic-bezier(0.22, 0.74, 0.28, 1);
 }
 
-.ap-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 7;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.ap-layer[hidden] {
-  display: none !important;
-}
-
-.ap-layer::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(4, 8, 14, 0.64);
-  z-index: 0;
-}
-
-.ap-video-source {
-  display: none;
-}
-
-.ap-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  mix-blend-mode: plus-lighter;
-  opacity: 0.94;
-  z-index: 1;
-}
-
-@supports not (mix-blend-mode: plus-lighter) {
-  .ap-canvas {
-    mix-blend-mode: screen;
-  }
-}
-
 .preview-panel.intro-active .effects-canvas {
   opacity: 0;
 }

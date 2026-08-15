@@ -4,7 +4,7 @@ Project SEKAI 风格 SUS 预览器（Web 版）。
 
 ![Preview](docs/preview.jpg)
 
-支持纯 wasm 渲染的谱面与 Overlay HUD（分数/血量/combo/PERFECT/开场信息卡）、Web AP 结尾演出、本地文件上传与 PWA 缓存。
+支持纯 wasm 渲染的谱面与 Overlay HUD（分数/血量/combo/PERFECT/开场信息卡）、Unity 风格原生 AP 结尾演出、本地文件上传与 PWA 缓存。
 
 ## 页面路由
 
@@ -22,7 +22,8 @@ Project SEKAI 风格 SUS 预览器（Web 版）。
 - SUS 解析与 WebAssembly 原生渲染
 - 音轨与谱面同步（支持 `offset`）
 - 纯 wasm Overlay HUD、背景生成与开场信息层
-- AP 结尾演出（暗场 + Web 视频叠加）
+- AP 结尾演出（按 Unity 动画与粒子效果原生逐帧绘制，不依赖视频）
+- 可选自制谱 Info（原曲信息下方显示制谱图标、谱面标题与谱面作者）
 - 本地上传 SUS/BGM/曲绘
 - 背景亮度调节（60%~100%）
 - 可选显示锁屏组件，便于录屏
@@ -36,6 +37,7 @@ Project SEKAI 风格 SUS 预览器（Web 版）。
 - Node.js 20+
 - npm 10+
 - Emscripten（`emcc` 可执行）
+- sus2json 源码：[watagashi-uni/Sekai-SUS-Parser](https://github.com/watagashi-uni/Sekai-SUS-Parser)
 
 安装与开发：
 
@@ -56,11 +58,34 @@ npm run build
 npm run preview
 ```
 
+### sus2json 构建依赖
+
+`npm run build` 会把 [Sekai-SUS-Parser](https://github.com/watagashi-uni/Sekai-SUS-Parser)
+中的 `SusToJsonCpp` 编译为浏览器使用的 WebAssembly。默认目录结构为：
+
+```text
+workspace/
+├── sekai-mmw-preview-web/
+└── Sekai-SUS-Parser/
+    └── SusToJsonCpp/
+```
+
+可以在本项目目录下执行以下命令准备源码：
+
+```bash
+git clone https://github.com/watagashi-uni/Sekai-SUS-Parser ../Sekai-SUS-Parser
+```
+
+如果源码不在默认位置，可通过 `SEKAI_SUS_TO_JSON_ROOT` 指向 `SusToJsonCpp` 目录：
+
+```bash
+SEKAI_SUS_TO_JSON_ROOT=/path/to/Sekai-SUS-Parser/SusToJsonCpp npm run build
+```
+
 ## 资源同步脚本说明
 
-`scripts/sync-mmw-assets.mjs` 与 `scripts/build-wasm.mjs` 里使用了本地绝对路径常量（如 `projectRoot/mmwRoot/overlayRoot`）。
-
-如果你在不同机器运行，请先按自己的目录修改脚本顶部路径。
+脚本默认从项目同级目录查找 MikuMikuWorld、OpenSekai 和 overlay 资源，也可用
+`MMW_ROOT`、`OPENSEKAI_RESULT_ROOT`、`PJSK_OVERLAY_ROOT` 等环境变量覆盖资源位置。
 
 ## URL 预览参数
 
@@ -92,6 +117,9 @@ npm run preview
 | 编曲 | `arranger` | `ar` | 否 |
 | 演唱 | `vocal` | `v` | 否 |
 | 难度 | `difficulty` | `d` | 否 |
+| 自制谱 Info | `info` | `i` | 否 |
+| 谱面标题 | `scoreTitle` | `st` | 否 |
+| 谱面作者 | `scoreCreator` | `sc` | 否 |
 | 第一行描述覆盖 | `description1` | `d1` | 否 |
 | 第二行描述覆盖 | `description2` | `d2` | 否 |
 | 额外信息 | `extra` | `e` | 否 |
@@ -100,6 +128,17 @@ npm run preview
 
 - 数字：`0~6`（`EASY/NORMAL/HARD/EXPERT/MASTER/APPEND/ETERNAL`）
 - 文本：`EASY/NORMAL/HARD/EXPERT/MASTER/APPEND/ETERNAL`
+
+自制谱 Info 推荐直接传对象；只要提供 `info`、`scoreTitle` 或 `scoreCreator` 就会启用，也可用 `customScoreInfo=false` 显式关闭：
+
+```json
+{
+  "i": {
+    "title": "谱面标题",
+    "creator": "谱面作者"
+  }
+}
+```
 
 `offset` 说明：
 

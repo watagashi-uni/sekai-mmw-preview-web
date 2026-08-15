@@ -28,6 +28,9 @@ export type UrlPreviewParams = {
   arranger: string | null
   vocal: string | null
   difficulty: string | null
+  customScoreInfo: boolean
+  scoreTitle: string | null
+  scoreCreator: string | null
   description1: string | null
   description2: string | null
   extra: string | null
@@ -77,6 +80,9 @@ export type SessionMetadata = {
   arranger: string | null
   vocal: string | null
   difficulty: string | null
+  customScoreInfo: boolean
+  scoreTitle: string | null
+  scoreCreator: string | null
 }
 
 export type WasmPlayerSnapshot = {

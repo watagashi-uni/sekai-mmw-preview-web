@@ -179,6 +179,9 @@ namespace
         std::string arranger;
         std::string vocal;
         std::string difficulty;
+        bool customScoreInfo = false;
+        std::string scoreTitle;
+        std::string scoreCreator;
     };
 
     struct PlayerSnapshot
@@ -229,6 +232,7 @@ namespace
         double durationSec = 0.0;
         double chartEndSec = 0.0;
         double apStartSec = 0.0;
+        bool apSoundActive = false;
         double playbackRate = 1.0;
     };
 
@@ -491,7 +495,7 @@ namespace
                 }
             }
 
-            trigger(name, gain, delaySec) {
+            trigger(name, gain, delaySec, offsetSec = 0) {
                 if (!name) {
                     return;
                 }
@@ -503,6 +507,7 @@ namespace
                 const source = context.createBufferSource();
                 const gainNode = context.createGain();
                 source.buffer = buffer;
+                source.playbackRate.value = this.playbackRate;
                 gainNode.gain.value = Math.max(0, Number(gain) || 0) * this.soundVolume;
                 source.connect(gainNode);
                 gainNode.connect(context.destination);
@@ -513,7 +518,8 @@ namespace
                         gainNode.disconnect();
                     } catch {}
                 };
-                source.start(context.currentTime + Math.max(0, Number(delaySec) || 0));
+                const offset = Math.min(Math.max(0, Number(offsetSec) || 0), Math.max(0, buffer.duration - 0.001));
+                source.start(context.currentTime + Math.max(0, Number(delaySec) || 0), offset);
                 this.oneShots.add(source);
             }
 
@@ -709,6 +715,11 @@ namespace
     EM_JS(void, jsAudioTriggerOneShot, (const char* keyPtr, double gain, double delaySec), {
         jsAudioEnsureEngine();
         Module.__mmwAudio.trigger(UTF8ToString(keyPtr), gain, delaySec);
+    });
+
+    EM_JS(void, jsAudioTriggerOneShotAtOffset, (const char* keyPtr, double gain, double offsetSec), {
+        jsAudioEnsureEngine();
+        Module.__mmwAudio.trigger(UTF8ToString(keyPtr), gain, 0, offsetSec);
     });
 
     EM_JS(void, jsAudioTriggerExtendable, (const char* keyPtr, double gain, double currentOutputTimeSec, double endTimeSec, double delaySec), {
@@ -2384,6 +2395,11 @@ void main() {
     constexpr float INTRO_TITLE_DRAW_SIZE_PX = 38.0f;
     constexpr float INTRO_TITLE_LETTER_SPACING_PX = 5.0f;
     constexpr float INTRO_DIFF_DRAW_SIZE_PX = 28.0f;
+    constexpr float CUSTOM_SCORE_MUSIC_INFO_OFFSET_Y_PX = -110.0f;
+    constexpr float AP_EFFECT_DELAY_SEC = 0.2f;
+    constexpr float AP_CIRCLE_DELAY_SEC = 0.083333336f;
+    constexpr float AP_AUDIO_DURATION_SEC = 10.28644f;
+    constexpr float AP_EFFECT_DURATION_SEC = 10.3f;
 
     struct IntroCardState
     {
@@ -2393,6 +2409,9 @@ void main() {
         std::string description1;
         std::string description2;
         std::string difficulty;
+        bool customScoreInfo = false;
+        std::string scoreTitle;
+        std::string scoreCreator;
     };
 
     struct IntroFontSet
@@ -2702,6 +2721,29 @@ void main() {
             IM_COL32(255, 255, 255, static_cast<int>(std::lround(clamp01(alpha) * 255.0f))));
     }
 
+    void drawHudImageUv(
+        ImDrawList* drawList,
+        const Texture& texture,
+        float x,
+        float y,
+        float width,
+        float height,
+        ImVec2 uv0,
+        ImVec2 uv1,
+        ImU32 tint)
+    {
+        if (!drawList || texture.id == 0 || width <= 0.1f || height <= 0.1f) {
+            return;
+        }
+        drawList->AddImage(
+            textureId(texture),
+            ImVec2(x, y),
+            ImVec2(x + width, y + height),
+            uv0,
+            uv1,
+            tint);
+    }
+
     void drawHudImageClipX(
         ImDrawList* drawList,
         const Texture& texture,
@@ -2727,6 +2769,112 @@ void main() {
             ImVec2(0.0f, 0.0f),
             ImVec2(clipped, 1.0f),
             IM_COL32(255, 255, 255, static_cast<int>(std::lround(clamp01(alpha) * 255.0f))));
+    }
+
+    void drawHudImageRotated(
+        ImDrawList* drawList,
+        const Texture& texture,
+        ImVec2 center,
+        float width,
+        float height,
+        float rotation,
+        ImU32 tint)
+    {
+        if (!drawList || texture.id == 0 || width <= 0.1f || height <= 0.1f) {
+            return;
+        }
+        const float cosine = std::cos(rotation);
+        const float sine = std::sin(rotation);
+        auto rotate = [&](float x, float y) {
+            return ImVec2(center.x + x * cosine - y * sine, center.y + x * sine + y * cosine);
+        };
+        const float halfWidth = width * 0.5f;
+        const float halfHeight = height * 0.5f;
+        drawList->AddImageQuad(
+            textureId(texture),
+            rotate(-halfWidth, -halfHeight),
+            rotate(halfWidth, -halfHeight),
+            rotate(halfWidth, halfHeight),
+            rotate(-halfWidth, halfHeight),
+            ImVec2(0.0f, 0.0f),
+            ImVec2(1.0f, 0.0f),
+            ImVec2(1.0f, 1.0f),
+            ImVec2(0.0f, 1.0f),
+            tint);
+    }
+
+    [[nodiscard]] float smoothStep(float edge0, float edge1, float value)
+    {
+        if (edge1 <= edge0) {
+            return value >= edge1 ? 1.0f : 0.0f;
+        }
+        const float normalized = clamp01((value - edge0) / (edge1 - edge0));
+        return normalized * normalized * (3.0f - 2.0f * normalized);
+    }
+
+    [[nodiscard]] float hash01(std::uint32_t value)
+    {
+        value ^= value >> 16;
+        value *= 0x7feb352du;
+        value ^= value >> 15;
+        value *= 0x846ca68bu;
+        value ^= value >> 16;
+        return static_cast<float>(value & 0x00ffffffu) / static_cast<float>(0x01000000u);
+    }
+
+    struct ApCurveKey
+    {
+        float time;
+        float value;
+        float inSlope;
+        float outSlope;
+    };
+
+    template <size_t N>
+    [[nodiscard]] float sampleApCurve(const std::array<ApCurveKey, N>& keys, float time)
+    {
+        if (time <= keys.front().time) {
+            return keys.front().value;
+        }
+        if (time >= keys.back().time) {
+            return keys.back().value;
+        }
+        for (size_t index = 0; index + 1 < keys.size(); ++index) {
+            const ApCurveKey& left = keys[index];
+            const ApCurveKey& right = keys[index + 1];
+            if (time > right.time) {
+                continue;
+            }
+            if (left.value == right.value || !std::isfinite(left.outSlope) || !std::isfinite(right.inSlope)) {
+                return left.value;
+            }
+            const float duration = right.time - left.time;
+            const float t = clamp01((time - left.time) / duration);
+            const float t2 = t * t;
+            const float t3 = t2 * t;
+            const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
+            const float h10 = t3 - 2.0f * t2 + t;
+            const float h01 = -2.0f * t3 + 3.0f * t2;
+            const float h11 = t3 - t2;
+            return h00 * left.value + h10 * duration * left.outSlope +
+                h01 * right.value + h11 * duration * right.inSlope;
+        }
+        return keys.back().value;
+    }
+
+    void useAdditiveBlend(const ImDrawList*, const ImDrawCmd*)
+    {
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
+    }
+
+    void beginAdditive(ImDrawList* drawList)
+    {
+        drawList->AddCallback(useAdditiveBlend, nullptr);
+    }
+
+    void endAdditive(ImDrawList* drawList)
+    {
+        drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     }
 
     [[nodiscard]] std::string trimText(std::string value)
@@ -2818,6 +2966,13 @@ void main() {
         if (intro.difficulty.empty()) {
             intro.difficulty = "";
         }
+
+        intro.customScoreInfo = metadata.customScoreInfo;
+        intro.scoreTitle = trimText(metadata.scoreTitle);
+        if (intro.scoreTitle.empty()) {
+            intro.scoreTitle = intro.title;
+        }
+        intro.scoreCreator = trimText(metadata.scoreCreator);
 
         intro.hasContent = intro.hasCover || !intro.title.empty() || !intro.description1.empty() || !intro.description2.empty() || !intro.difficulty.empty();
         return intro;
@@ -3082,7 +3237,8 @@ void main() {
 
         const float textLeft = intro.hasCover ? INTRO_TEXT_LEFT_WITH_COVER_PX : INTRO_TEXT_LEFT_NO_COVER_PX;
         const float textBottom = INTRO_TEXT_BOTTOM_PX;
-        const float blockTop = 1080.0f - textBottom - 180.0f + INTRO_TEXT_BLOCK_SHIFT_Y_PX;
+        const float customInfoOffsetY = intro.customScoreInfo ? CUSTOM_SCORE_MUSIC_INFO_OFFSET_Y_PX : 0.0f;
+        const float blockTop = 1080.0f - textBottom - 180.0f + INTRO_TEXT_BLOCK_SHIFT_Y_PX + customInfoOffsetY;
         const float textMaxWidth = std::max(320.0f, 1920.0f - textLeft - 120.0f);
         const ImU32 titleColor = IM_COL32(246, 251, 255, static_cast<int>(std::lround(cardAlpha * 255.0f)));
         const ImU32 metaColor = IM_COL32(255, 255, 255, static_cast<int>(std::lround(cardAlpha * 255.0f)));
@@ -3112,6 +3268,358 @@ void main() {
                 intro.description2.c_str(),
                 nullptr,
                 ps(textMaxWidth));
+
+            if (intro.customScoreInfo) {
+                constexpr float scoreLineY = 908.0f;
+                constexpr float scoreIconY = 934.0f;
+                constexpr float scoreTitleOffsetX = 54.0f;
+                constexpr float scoreTitleY = 940.0f;
+                constexpr float scoreCreatorY = 1001.0f;
+                const float scoreInfoLeft = textLeft;
+                const ImU32 scoreColor = IM_COL32(255, 255, 255, static_cast<int>(std::lround(cardAlpha * 255.0f)));
+                overlay->AddRectFilled(
+                    ImVec2(px(scoreInfoLeft), py(scoreLineY)),
+                    ImVec2(px(std::min(1814.0f, scoreInfoLeft + 1274.0f)), py(scoreLineY + 2.0f)),
+                    IM_COL32(255, 255, 255, static_cast<int>(std::lround(cardAlpha * 0.88f * 255.0f))));
+                if (const Texture* icon = findTexture(hudTextures, "custom_score_icon")) {
+                    drawHudImage(overlay, *icon, px(scoreInfoLeft), py(scoreIconY), ps(42.0f), ps(42.0f), cardAlpha);
+                }
+                drawSpacedUtf8Text(
+                    overlay,
+                    fonts.body,
+                    ps(30.0f),
+                    ImVec2(px(scoreInfoLeft + scoreTitleOffsetX), py(scoreTitleY)),
+                    scoreColor,
+                    intro.scoreTitle,
+                    ps(3.2f),
+                    ps(std::max(0.0f, textMaxWidth - scoreTitleOffsetX)));
+                if (!intro.scoreCreator.empty()) {
+                    overlay->AddText(
+                        fonts.body,
+                        ps(26.0f),
+                        ImVec2(px(scoreInfoLeft), py(scoreCreatorY)),
+                        scoreColor,
+                        intro.scoreCreator.c_str(),
+                        nullptr,
+                        ps(textMaxWidth));
+                }
+            }
+        }
+    }
+
+    void drawAllPerfectOverlay(
+        GlRenderer& renderer,
+        const std::unordered_map<std::string, Texture>& hudTextures,
+        float outputTimeSec,
+        float apStartSec)
+    {
+        const float resultTime = outputTimeSec - apStartSec;
+        if (resultTime < 0.0f || resultTime > AP_EFFECT_DURATION_SEC) {
+            return;
+        }
+
+        const auto previewRectWindow = renderer.previewRectWindow();
+        const UiTransform tx = buildUiTransform(previewRectWindow[2], previewRectWindow[3]);
+        auto px = [&](float x) { return static_cast<float>(previewRectWindow[0]) + tx.offsetX + x * tx.scale; };
+        auto py = [&](float y) { return static_cast<float>(previewRectWindow[1]) + tx.offsetY + y * tx.scale; };
+        auto ps = [&](float value) { return value * tx.scale; };
+        ImDrawList* overlay = ImGui::GetForegroundDrawList();
+
+        overlay->AddRectFilled(
+            ImVec2(px(0.0f), py(0.0f)),
+            ImVec2(px(1920.0f), py(1080.0f)),
+            IM_COL32(0, 0, 0, 128));
+
+        const float effectTime = resultTime - AP_EFFECT_DELAY_SEC;
+        if (effectTime < 0.0f) {
+            return;
+        }
+
+        const Texture* textTexture = findTexture(hudTextures, "ap_text");
+        const Texture* lineTextTexture = findTexture(hudTextures, "ap_text_line");
+        const Texture* flareTexture = findTexture(hudTextures, "ap_flare");
+        const Texture* flashTexture = findTexture(hudTextures, "ap_flash");
+        const Texture* sparkleTexture = findTexture(hudTextures, "ap_sparkle");
+
+        const std::array<ApCurveKey, 6> circleScale{{
+            {0.0f, 0.0f, 0.0f, -INFINITY},
+            {0.083333336f, 0.0f, 0.0f, 0.0f},
+            {0.5f, 2.0517254f, 17.75283f, 17.752829f},
+            {0.6666667f, 6.66377f, 7.368529f, 7.3685446f},
+            {1.6666666f, 10.0f, 0.0f, -INFINITY},
+            {2.5f, 10.0f, 0.0f, 0.0f},
+        }};
+        const std::array<ApCurveKey, 5> circleAlpha{{
+            {0.0f, 0.0f, 0.0f, 4.0f},
+            {0.25f, 1.0f, 2.0f, 2.0f},
+            {0.5f, 1.0f, -0.42857146f, -0.42857143f},
+            {1.6666666f, 0.0f, -0.42857137f, -0.42857143f},
+            {2.5f, 0.0f, 0.0f, 0.0f},
+        }};
+        const std::array<ApCurveKey, 6> glowScaleX{{
+            {0.0f, 0.0f, 0.0f, -INFINITY},
+            {0.05f, 0.0f, 0.0f, 0.0f},
+            {0.33333334f, 1.7121953f, 0.0f, 0.0f},
+            {0.5f, 3.5860062f, 0.0f, 0.0f},
+            {1.3f, 2.0f, 0.0f, -INFINITY},
+            {2.5f, 2.0f, 0.0f, 0.0f},
+        }};
+        const std::array<ApCurveKey, 6> glowScaleY{{
+            {0.0f, 0.0f, 0.0f, -INFINITY},
+            {0.05f, 0.0f, 0.0f, 0.0f},
+            {0.33333334f, 0.6831986f, 0.0f, 0.0f},
+            {0.5f, 1.6435859f, 0.0f, 0.0f},
+            {1.3f, 0.8f, 0.0f, -INFINITY},
+            {2.5f, 0.8f, 0.0f, 0.0f},
+        }};
+        const std::array<ApCurveKey, 5> glowAlpha{{
+            {0.0f, 1.0f, 0.0f, -0.0028949906f},
+            {0.16666667f, 1.0f, -0.0028949925f, -0.0028949906f},
+            {0.5f, 1.0f, -0.002894993f, -0.0028949906f},
+            {1.3f, 0.0f, 0.0000005282744f, -INFINITY},
+            {2.5f, 0.0f, 0.0f, 0.0f},
+        }};
+
+        beginAdditive(overlay);
+        if (flashTexture && effectTime < 1.3f) {
+            const float scaleX = sampleApCurve(glowScaleX, effectTime);
+            const float scaleY = sampleApCurve(glowScaleY, effectTime);
+            const float alpha = clamp01(sampleApCurve(glowAlpha, effectTime));
+            drawHudImage(
+                overlay,
+                *flashTexture,
+                px(960.0f - 480.0f * scaleX),
+                py(529.0f - 270.0f * scaleY),
+                ps(960.0f * scaleX),
+                ps(540.0f * scaleY),
+                alpha);
+        }
+        {
+            const float circleTime = effectTime - AP_CIRCLE_DELAY_SEC;
+            if (circleTime >= 0.0f) {
+                const float scale = sampleApCurve(circleScale, circleTime);
+                const float radius = ps(81.03861f * scale);
+                const float alpha = clamp01(sampleApCurve(circleAlpha, circleTime));
+                const float thicknessProgress = clamp01(scale / 2.0517254f);
+                const float glowThickness = 0.35f + 5.65f * thicknessProgress;
+                const float coreThickness = 0.2f + 1.45f * thicknessProgress;
+                const ImVec2 center(px(960.0f), py(540.0f));
+                overlay->AddCircle(
+                    center,
+                    radius,
+                    IM_COL32(126, 177, 255, static_cast<int>(std::lround(alpha * 0.34f * 255.0f))),
+                    60,
+                    ps(glowThickness));
+                overlay->AddCircle(
+                    center,
+                    radius,
+                    IM_COL32(255, 255, 255, static_cast<int>(std::lround(alpha * 0.92f * 255.0f))),
+                    60,
+                    ps(coreThickness));
+            }
+        }
+
+        if (sparkleTexture) {
+            auto drawParticle = [&](float x, float y, float size, float rotation, ImU32 rgb, float alpha) {
+                const ImU32 tint = (rgb & 0x00ffffffu) |
+                    (static_cast<ImU32>(std::lround(clamp01(alpha) * 255.0f)) << 24);
+                drawHudImageRotated(
+                    overlay,
+                    *sparkleTexture,
+                    ImVec2(px(x), py(y)),
+                    ps(size),
+                    ps(size),
+                    rotation,
+                    tint);
+            };
+            auto drawBurst = [&](float activation, int seedBase, float emitterX, float emitterY, float minSpeed, float maxSpeed, float minLife, float maxLife) {
+                const float age = effectTime - activation;
+                if (age < 0.0f || age > maxLife) {
+                    return;
+                }
+                constexpr float drag = 13.388613f;
+                const float travelFactor = (1.0f - std::exp(-drag * age)) / drag;
+                for (int index = 0; index < 150; ++index) {
+                    const std::uint32_t seed = static_cast<std::uint32_t>(seedBase + index * 193);
+                    const float lifetime = minLife + (maxLife - minLife) * hash01(seed + 1u);
+                    if (age > lifetime) {
+                        continue;
+                    }
+                    const float normalizedAge = age / lifetime;
+                    const float angle = hash01(seed + 2u) * 6.28318530718f;
+                    const float radius = std::sqrt(hash01(seed + 3u));
+                    const float speed = minSpeed + (maxSpeed - minSpeed) * hash01(seed + 4u);
+                    const float x = 960.0f + std::cos(angle) * (emitterX * radius + speed * travelFactor);
+                    const float y = 540.0f + std::sin(angle) * (emitterY * radius + speed * travelFactor);
+                    const float twinkle = std::abs(std::sin(normalizedAge * 12.5663706144f));
+                    if (twinkle < 0.58f) {
+                        continue;
+                    }
+                    const float envelope = smoothStep(0.0f, 0.12f, normalizedAge) * (1.0f - smoothStep(0.72f, 1.0f, normalizedAge));
+                    const float size = (4.0f + 9.0f * hash01(seed + 5u)) * (0.18f + 0.82f * twinkle);
+                    drawParticle(x, y, size, angle, IM_COL32(255, 255, 255, 255), envelope * 0.78f);
+                }
+            };
+            drawBurst(0.16666667f, 1103, 495.0f, 30.0f, 100.0f, 3500.0f, 0.5f, 1.5f);
+            drawBurst(0.5f, 7919, 150.0f, 150.0f, 1000.0f, 5000.0f, 0.5f, 2.0f);
+
+            if (effectTime >= 0.5f) {
+                const std::array<ImU32, 5> starColors{{
+                    IM_COL32(255, 255, 255, 255),
+                    IM_COL32(202, 224, 255, 255),
+                    IM_COL32(179, 160, 255, 255),
+                    IM_COL32(125, 210, 255, 255),
+                    IM_COL32(224, 202, 255, 255),
+                }};
+                auto drawLoopSystem = [&](int system, float width, float height, bool fullScreen) {
+                    const float localTime = effectTime - 0.5f;
+                    const int latestBirth = static_cast<int>(std::floor(localTime * 30.0f));
+                    for (int birth = std::max(0, latestBirth - 32); birth <= latestBirth; ++birth) {
+                        const float bornAt = static_cast<float>(birth) / 30.0f;
+                        const float age = localTime - bornAt;
+                        const std::uint32_t seed = static_cast<std::uint32_t>(9 + system * 100003 + birth * 977);
+                        const float lifetime = 0.5f + 0.5f * hash01(seed + 1u);
+                        if (age < 0.0f || age > lifetime) {
+                            continue;
+                        }
+                        const float normalizedAge = age / lifetime;
+                        const float rx = hash01(seed + 2u) * 2.0f - 1.0f;
+                        const float ry = hash01(seed + 3u) * 2.0f - 1.0f;
+                        const float x = fullScreen ? 960.0f + rx * width : 960.0f + rx * width * (0.65f + 0.35f * hash01(seed + 4u));
+                        const float y = 536.0f + ry * height;
+                        const float twinkle = std::abs(std::sin(normalizedAge * 9.42477796077f + hash01(seed + 5u) * 3.14159265359f));
+                        const float alpha = smoothStep(0.0f, 0.16f, normalizedAge) * (1.0f - smoothStep(0.70f, 1.0f, normalizedAge));
+                        const float size = (5.0f + 15.0f * hash01(seed + 6u)) * (0.28f + 0.72f * twinkle);
+                        const ImU32 color = starColors[static_cast<size_t>((birth + system * 2) % static_cast<int>(starColors.size()))];
+                        drawParticle(x, y, size, hash01(seed + 7u) * 6.28318530718f, color, alpha);
+                    }
+                };
+                drawLoopSystem(0, 720.0f, 180.0f, false);
+                drawLoopSystem(1, 720.0f, 120.0f, false);
+                drawLoopSystem(2, 900.0f, 500.0f, true);
+            }
+        }
+        endAdditive(overlay);
+
+        const std::array<ApCurveKey, 5> lineAlpha{{
+            {0.0f, 0.0f, 0.0f, -INFINITY},
+            {0.25f, 0.0f, 0.0f, 0.0f},
+            {0.5833333f, 1.0f, 0.0f, 0.0f},
+            {2.5f, 0.0f, -0.00000023887515f, 0.0f},
+            {AP_EFFECT_DURATION_SEC, 0.0f, 0.0f, 0.0f},
+        }};
+        const std::array<ApCurveKey, 5> upperLineY{{
+            {0.0f, 0.075f, 0.0f, -INFINITY},
+            {0.5f, 0.075f, 0.0f, 0.0f},
+            {0.6666667f, 0.5511882f, 3.7236898f, 3.7236893f},
+            {0.75f, 0.7731918f, 1.1067581f, 1.1067588f},
+            {2.5f, 1.4f, 0.0f, 0.0f},
+        }};
+        const std::array<ApCurveKey, 5> lowerLineY{{
+            {0.0f, 0.075f, 0.0f, -INFINITY},
+            {0.5f, 0.075f, 0.0f, 0.0f},
+            {0.6666667f, -0.4752076f, -4.337098f, -4.337098f},
+            {0.75f, -0.7382059f, -1.4085149f, -1.4085156f},
+            {2.5f, -1.4f, 0.0f, 0.0f},
+        }};
+        if (lineTextTexture) {
+            const float alpha = clamp01(sampleApCurve(lineAlpha, effectTime));
+            const float width = 1444.0f * 0.923f;
+            const float height = 182.0f * 0.923f;
+            auto drawLine = [&](float worldY) {
+                const float centerY = 540.0f - worldY * 100.0f;
+                drawHudImage(
+                    overlay,
+                    *lineTextTexture,
+                    px(960.0f - width * 0.5f),
+                    py(centerY - height * 0.5f),
+                    ps(width),
+                    ps(height),
+                    alpha);
+            };
+            drawLine(sampleApCurve(upperLineY, effectTime));
+            drawLine(sampleApCurve(lowerLineY, effectTime));
+        }
+
+        struct GlyphData
+        {
+            float uvX;
+            float width;
+            std::array<ApCurveKey, 4> x;
+            float alphaDelay;
+            float alphaMidSlope;
+        };
+        auto xCurve = [](float x0, float out0, float x25, float slope25, float x50, float slope50, float xFinal) {
+            return std::array<ApCurveKey, 4>{{
+                {0.0f, x0, 0.0f, out0},
+                {0.25f, x25, slope25, slope25},
+                {0.5f, x50, slope50, slope50},
+                {2.5f, xFinal, 0.0f, 0.0f},
+            }};
+        };
+        const std::array<GlyphData, 12> glyphs{{
+            {0.0f, 168.0f, xCurve(-5.04f, 0.0f, -5.22f, -1.4399986f, -6.463333f, -0.16829682f, -6.558f), 0.25f, 2.5481489f},
+            {168.0f, 106.0f, xCurve(-3.5761826f, 0.0f, -3.9500003f, -2.9905415f, -5.074926f, -0.13168762f, -5.149f), 0.25f, 2.5481489f},
+            {283.0f, 106.0f, xCurve(-2.91f, -INFINITY, -2.91f, 0.0f, -3.9027777f, -0.114173f, -3.967f), 0.18333334f, 2.0116966f},
+            {431.0f, 120.0f, xCurve(-1.6128728f, -INFINITY, -1.6128728f, 0.0f, -2.292926f, -0.13168716f, -2.367f), 0.15f, 1.8201063f},
+            {561.0f, 118.0f, xCurve(-0.7963553f, -INFINITY, -0.7963553f, 0.0f, -1.0227778f, -0.05728385f, -1.055f), 0.11666667f, 1.6618361f},
+            {690.0f, 128.0f, xCurve(0.19527237f, -INFINITY, 0.19527237f, 0.0f, 0.31759256f, 0.03094656f, 0.335f), 0.083333336f, 1.5288894f},
+            {829.0f, 108.0f, xCurve(1.05f, 0.0f, 1.09f, 0.32000065f, 1.6209259f, 0.07835388f, 1.665f), 0.11666667f, 1.6618361f},
+            {944.0f, 118.0f, xCurve(2.06f, 0.0f, 2.12f, 0.47999954f, 2.81f, 0.09244448f, 2.862f), 0.15f, 1.8201063f},
+            {1062.0f, 136.0f, xCurve(3.0299997f, 0.0f, 3.1699996f, 1.1199989f, 4.137f, 0.1671114f, 4.231f), 0.18333334f, 2.0116966f},
+            {1202.0f, 124.0f, xCurve(4.01f, 0.0f, 4.19f, 1.4399986f, 5.488f, 0.1493337f, 5.572f), 0.25f, 2.5481489f},
+            {1332.0f, 42.0f, xCurve(4.692918f, 0.0f, 4.892918f, 1.6000023f, 6.374f, 0.26133326f, 6.521f), 0.25f, 2.5481489f},
+            {1395.0f, 42.0f, xCurve(5.128365f, 0.0f, 5.3283653f, 1.6000023f, 7.010847f, 0.2740497f, 7.1649995f), 0.25f, 2.5481489f},
+        }};
+        if (textTexture) {
+            constexpr float textureWidth = 1444.0f;
+            constexpr float glyphScale = 0.9f;
+            constexpr float glyphHeight = 182.0f * glyphScale;
+            for (const GlyphData& glyph : glyphs) {
+                const std::array<ApCurveKey, 5> alphaCurve{{
+                    {0.0f, 0.0f, 0.0f, 0.0f},
+                    {glyph.alphaDelay, 0.1f, 0.62222236f, 0.6222223f},
+                    {0.41666666f, 0.25925928f, glyph.alphaMidSlope, glyph.alphaMidSlope},
+                    {0.5f, 1.0f, 0.0f, -INFINITY},
+                    {2.5f, 1.0f, 0.0f, 0.0f},
+                }};
+                const float alpha = clamp01(sampleApCurve(alphaCurve, effectTime));
+                const float centerX = 960.0f + sampleApCurve(glyph.x, effectTime) * 90.0f;
+                const float width = glyph.width * glyphScale;
+                drawHudImageUv(
+                    overlay,
+                    *textTexture,
+                    px(centerX - width * 0.5f),
+                    py(533.0f - glyphHeight * 0.5f),
+                    ps(width),
+                    ps(glyphHeight),
+                    ImVec2(glyph.uvX / textureWidth, 0.0f),
+                    ImVec2((glyph.uvX + glyph.width) / textureWidth, 1.0f),
+                    IM_COL32(255, 255, 255, static_cast<int>(std::lround(alpha * 255.0f))));
+            }
+        }
+
+        // The Unity flare shares the text sorting order and its additive material
+        // is composited over the glyphs, washing the title out at the impact frame.
+        const std::array<ApCurveKey, 5> flareAlpha{{
+            {0.0f, 0.0f, 0.0f, -INFINITY},
+            {0.41666666f, 0.0f, 0.0f, 0.0f},
+            {0.5f, 1.0f, -0.0000034968043f, 0.0f},
+            {1.6666666f, 0.2f, -0.4000001f, -0.39999998f},
+            {2.5f, 0.0f, -0.000000047713527f, 0.0f},
+        }};
+        if (flareTexture) {
+            const float alpha = clamp01(sampleApCurve(flareAlpha, effectTime));
+            beginAdditive(overlay);
+            drawHudImage(
+                overlay,
+                *flareTexture,
+                px(960.0f - 900.0f * 0.91f),
+                py(531.0f - 256.0f * 0.91f),
+                ps(1800.0f * 0.91f),
+                ps(512.0f * 0.91f),
+                alpha);
+            endAdditive(overlay);
         }
     }
 
@@ -3152,6 +3660,12 @@ void main() {
             addHudTexture(std::string("life_digit_s_") + ch, std::string("overlay/life/v3/digit/s") + ch + ".png");
         }
         addHudTexture("intro_grad", "overlay/start_grad.png");
+        addHudTexture("custom_score_icon", "overlay/custom-score/icon.png");
+        addHudTexture("ap_text", "overlay/ap-native/all-perfect.png");
+        addHudTexture("ap_text_line", "overlay/ap-native/all-perfect-line.png");
+        addHudTexture("ap_flare", "overlay/ap-native/flare.png");
+        addHudTexture("ap_flash", "overlay/ap-native/flash.png");
+        addHudTexture("ap_sparkle", "overlay/ap-native/sparkle.png");
         if (coverBlob && !coverBlob->bytes.empty()) {
             hudTextures.emplace(
                 "intro_cover",
@@ -3669,6 +4183,17 @@ void main() {
             emitHitSounds(gPlayer.previousChartTimeSec, chartTimeSec);
         }
 
+        const float apSoundOffsetSec = outputTimeSec - static_cast<float>(gPlayer.apStartSec);
+        const bool apSoundInRange = apSoundOffsetSec >= 0.0f && apSoundOffsetSec < AP_AUDIO_DURATION_SEC;
+        if (snapshot.transportState == TransportStateNative::Playing && apSoundInRange) {
+            if (!gPlayer.apSoundActive) {
+                jsAudioTriggerOneShotAtOffset("allPerfect", 1.0, apSoundOffsetSec);
+                gPlayer.apSoundActive = true;
+            }
+        } else {
+            gPlayer.apSoundActive = false;
+        }
+
         render(chartTimeSec);
         const float* packed = gameplaySuppressed ? nullptr : getQuadBufferPointer();
         const int quadCount = gameplaySuppressed ? 0 : getQuadCount();
@@ -3697,6 +4222,11 @@ void main() {
             *gPlayer.introCard,
             *gPlayer.introFonts,
             outputTimeSec);
+        drawAllPerfectOverlay(
+            *gPlayer.renderer,
+            gPlayer.hudTextures,
+            outputTimeSec,
+            static_cast<float>(gPlayer.apStartSec));
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         gPlayer.renderer->present();
@@ -3779,7 +4309,10 @@ extern "C"
         const char* composer,
         const char* arranger,
         const char* vocal,
-        const char* difficulty)
+        const char* difficulty,
+        int customScoreInfo,
+        const char* scoreTitle,
+        const char* scoreCreator)
     {
         try {
             if (!gPlayer.initialized || !gPlayer.renderer) {
@@ -3797,6 +4330,9 @@ extern "C"
                 arranger ? arranger : "",
                 vocal ? vocal : "",
                 difficulty ? difficulty : "",
+                customScoreInfo != 0,
+                scoreTitle ? scoreTitle : "",
+                scoreCreator ? scoreCreator : "",
             };
 
             gPlayer.sourceOffsetSec = sourceOffsetMs / 1000.0;
@@ -3827,13 +4363,14 @@ extern "C"
 
             gPlayer.chartEndSec = getChartEndTimeSec();
             gPlayer.chartPlayableEndSec = static_cast<float>(gPlayer.chartEndSec);
-            gPlayer.durationSec = std::max(1.0, gPlayer.chartEndSec + gPlayer.effectiveLeadInSec + 1.0);
             gPlayer.apStartSec = gPlayer.effectiveLeadInSec + gPlayer.chartEndSec + 1.0;
+            gPlayer.durationSec = std::max(1.0, gPlayer.apStartSec + AP_EFFECT_DURATION_SEC);
             gPlayer.scorePlusTriggerSec = -1000.0f;
             gPlayer.scorePlusValue = 0;
             gPlayer.lastScoreEventIndex = -1;
             gPlayer.previousChartTimeSec = -1000.0f;
             gPlayer.nextHitEventIndex = 0;
+            gPlayer.apSoundActive = false;
             gPlayer.playbackRate = 1.0;
 
             jsAudioSetDuration(gPlayer.durationSec);
@@ -3881,7 +4418,10 @@ extern "C"
         const char* composer,
         const char* arranger,
         const char* vocal,
-        const char* difficulty)
+        const char* difficulty,
+        int customScoreInfo,
+        const char* scoreTitle,
+        const char* scoreCreator)
     {
         try {
             if (!gPlayer.initialized || !gPlayer.renderer) {
@@ -3899,6 +4439,9 @@ extern "C"
                 arranger ? arranger : "",
                 vocal ? vocal : "",
                 difficulty ? difficulty : "",
+                customScoreInfo != 0,
+                scoreTitle ? scoreTitle : "",
+                scoreCreator ? scoreCreator : "",
             };
 
             gPlayer.sourceOffsetSec = sourceOffsetMs / 1000.0;
@@ -3929,13 +4472,14 @@ extern "C"
 
             gPlayer.chartEndSec = getChartEndTimeSec();
             gPlayer.chartPlayableEndSec = static_cast<float>(gPlayer.chartEndSec);
-            gPlayer.durationSec = std::max(1.0, gPlayer.chartEndSec + gPlayer.effectiveLeadInSec + 1.0);
             gPlayer.apStartSec = gPlayer.effectiveLeadInSec + gPlayer.chartEndSec + 1.0;
+            gPlayer.durationSec = std::max(1.0, gPlayer.apStartSec + AP_EFFECT_DURATION_SEC);
             gPlayer.scorePlusTriggerSec = -1000.0f;
             gPlayer.scorePlusValue = 0;
             gPlayer.lastScoreEventIndex = -1;
             gPlayer.previousChartTimeSec = -1000.0f;
             gPlayer.nextHitEventIndex = 0;
+            gPlayer.apSoundActive = false;
             gPlayer.playbackRate = 1.0;
 
             jsAudioSetDuration(gPlayer.durationSec);
@@ -3983,6 +4527,8 @@ extern "C"
     EMSCRIPTEN_KEEPALIVE void pausePlayer()
     {
         jsAudioPause();
+        jsAudioClearOneShots();
+        gPlayer.apSoundActive = false;
     }
 
     EMSCRIPTEN_KEEPALIVE void seekPlayer(double outputTimeSec)
@@ -3990,11 +4536,14 @@ extern "C"
         jsAudioSeek(outputTimeSec);
         resetHitCursor(static_cast<float>(outputTimeSec - gPlayer.effectiveLeadInSec), true, false);
         gPlayer.previousChartTimeSec = static_cast<float>(outputTimeSec - gPlayer.effectiveLeadInSec);
+        gPlayer.apSoundActive = false;
     }
 
     EMSCRIPTEN_KEEPALIVE void setPlayerPlaybackRate(double playbackRate)
     {
         gPlayer.playbackRate = std::max(0.05, playbackRate);
+        jsAudioClearOneShots();
+        gPlayer.apSoundActive = false;
         jsAudioSetPlaybackRate(playbackRate);
     }
 

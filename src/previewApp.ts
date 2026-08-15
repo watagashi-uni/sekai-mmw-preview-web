@@ -34,8 +34,6 @@ const LOW_RENDER_WIDTH = 1280
 const LOW_RENDER_HEIGHT = 720
 const UI_REFRESH_INTERVAL_MS = 50
 const CONTROLS_AUTO_HIDE_MS = 3000
-const AP_VIDEO_URL = '/assets/mmw/overlay/ap.mp4'
-const AP_DRAW_INTERVAL_MS = 1000 / 30
 const STATIC_RUNTIME_CACHE_NAME = 'mmw-static-runtime-v2'
 
 const SOUND_URLS = {
@@ -49,6 +47,7 @@ const SOUND_URLS = {
   tickCritical: '/assets/mmw/sound/se_live_connect_critical.mp3',
   holdLoop: '/assets/mmw/sound/se_live_long.mp3',
   holdLoopCritical: '/assets/mmw/sound/se_live_long_critical.mp3',
+  allPerfect: '/assets/mmw/overlay/ap-native/all-perfect.m4a',
 } as const
 
 type BootLocalPayload = {
@@ -63,6 +62,9 @@ type BootLocalPayload = {
   arranger: string | null
   vocal: string | null
   difficulty: string | null
+  customScoreInfo: boolean
+  scoreTitle: string | null
+  scoreCreator: string | null
   showLockControlsButton: boolean
 }
 
@@ -86,6 +88,10 @@ type PostedPreviewPayload = {
   arranger?: string | null
   vocal?: string | null
   difficulty?: string | null
+  customScoreInfo?: boolean
+  info?: Record<string, unknown> | null
+  scoreTitle?: string | null
+  scoreCreator?: string | null
 }
 
 declare global {
@@ -134,10 +140,6 @@ app.innerHTML = `
       <div class="app-shell" id="app-shell">
         <section class="preview-panel" id="preview-panel">
           <canvas class="preview-canvas" id="preview-canvas"></canvas>
-          <div class="ap-layer" id="ap-layer" hidden>
-            <video class="ap-video-source" id="ap-video" preload="auto" playsinline></video>
-            <canvas class="ap-canvas" id="ap-canvas"></canvas>
-          </div>
           <button class="exit-fullscreen-button" id="exit-fullscreen-button" type="button" hidden title="退出全屏" aria-label="退出全屏"></button>
           <button class="lock-controls-button" id="lock-controls-button" type="button" hidden title="锁定控制栏" aria-label="锁定控制栏"></button>
           <div class="status-layer" id="status-layer">
@@ -304,6 +306,23 @@ app.innerHTML = `
                     <td><input id="local-vocal-input" type="text" /></td>
                   </tr>
                   <tr>
+                    <th>自制谱 Info</th>
+                    <td>
+                      <label class="local-lock-toggle">
+                        <input id="local-custom-score-info-input" type="checkbox" />
+                        显示自制谱图标和信息
+                      </label>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th><label for="local-score-title-input">谱面标题</label></th>
+                    <td><input id="local-score-title-input" type="text" placeholder="默认使用曲名" /></td>
+                  </tr>
+                  <tr>
+                    <th><label for="local-score-creator-input">谱面作者</label></th>
+                    <td><input id="local-score-creator-input" type="text" /></td>
+                  </tr>
+                  <tr>
                     <th>全屏锁屏组件</th>
                     <td>
                       <label class="local-lock-toggle">
@@ -336,9 +355,6 @@ menuToggle?.addEventListener('click', () => {
 const appShell = app.querySelector<HTMLElement>('#app-shell')!
 const previewPanel = app.querySelector<HTMLElement>('#preview-panel')!
 const canvas = app.querySelector<HTMLCanvasElement>('#preview-canvas')!
-const apLayer = app.querySelector<HTMLDivElement>('#ap-layer')!
-const apVideo = app.querySelector<HTMLVideoElement>('#ap-video')!
-const apCanvas = app.querySelector<HTMLCanvasElement>('#ap-canvas')!
 const exitFullscreenButton = app.querySelector<HTMLButtonElement>('#exit-fullscreen-button')!
 const lockControlsButton = app.querySelector<HTMLButtonElement>('#lock-controls-button')!
 const statusLayer = app.querySelector<HTMLDivElement>('#status-layer')!
@@ -393,6 +409,9 @@ const localLyricistInput = app.querySelector<HTMLInputElement>('#local-lyricist-
 const localComposerInput = app.querySelector<HTMLInputElement>('#local-composer-input')!
 const localArrangerInput = app.querySelector<HTMLInputElement>('#local-arranger-input')!
 const localVocalInput = app.querySelector<HTMLInputElement>('#local-vocal-input')!
+const localCustomScoreInfoInput = app.querySelector<HTMLInputElement>('#local-custom-score-info-input')!
+const localScoreTitleInput = app.querySelector<HTMLInputElement>('#local-score-title-input')!
+const localScoreCreatorInput = app.querySelector<HTMLInputElement>('#local-score-creator-input')!
 const localShowLockInput = app.querySelector<HTMLInputElement>('#local-show-lock-input')!
 const localLoaderSubmit = app.querySelector<HTMLButtonElement>('#local-loader-submit')!
 
@@ -483,10 +502,6 @@ let isIOS = false
 let isIPad = false
 let lowResolutionEnabled = false
 let shouldShowInitialFontHint = false
-let apSequenceTriggered = false
-let apPlaybackActive = false
-let apLastDrawMs = 0
-let apVideoObjectUrl: string | null = null
 const debugErrors = (window.__MMW_DEBUG_ERRORS__ ??= [])
 
 currentConfig = readStoredPreviewConfig()
@@ -548,179 +563,6 @@ function persistPreviewConfig() {
   }
 }
 
-class ApVideoRenderer {
-  private gl: WebGLRenderingContext | WebGL2RenderingContext | null = null
-
-  private ctx2d: CanvasRenderingContext2D | null = null
-
-  private program: WebGLProgram | null = null
-
-  private positionBuffer: WebGLBuffer | null = null
-
-  private texture: WebGLTexture | null = null
-
-  private texLocation: WebGLUniformLocation | null = null
-
-  constructor(private readonly canvas: HTMLCanvasElement) {
-    this.initWebgl()
-    if (!this.gl) {
-      this.ctx2d = canvas.getContext('2d')
-    }
-  }
-
-  resize() {
-    if (this.gl) {
-      this.gl.viewport(0, 0, this.canvas.width, this.canvas.height)
-      return
-    }
-    this.ctx2d?.clearRect(0, 0, this.canvas.width, this.canvas.height)
-  }
-
-  clear() {
-    if (this.gl) {
-      const gl = this.gl
-      gl.viewport(0, 0, this.canvas.width, this.canvas.height)
-      gl.clearColor(0, 0, 0, 0)
-      gl.clear(gl.COLOR_BUFFER_BIT)
-      return
-    }
-    this.ctx2d?.clearRect(0, 0, this.canvas.width, this.canvas.height)
-  }
-
-  draw(video: HTMLVideoElement) {
-    if (this.gl && this.program && this.positionBuffer && this.texture) {
-      const gl = this.gl
-      gl.viewport(0, 0, this.canvas.width, this.canvas.height)
-      gl.clearColor(0, 0, 0, 0)
-      gl.clear(gl.COLOR_BUFFER_BIT)
-      gl.useProgram(this.program)
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
-      gl.activeTexture(gl.TEXTURE0)
-      gl.bindTexture(gl.TEXTURE_2D, this.texture)
-      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
-      if (this.texLocation) {
-        gl.uniform1i(this.texLocation, 0)
-      }
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-      return
-    }
-
-    if (!this.ctx2d) {
-      return
-    }
-    this.ctx2d.clearRect(0, 0, this.canvas.width, this.canvas.height)
-    this.ctx2d.drawImage(video, 0, 0, this.canvas.width, this.canvas.height)
-  }
-
-  private initWebgl() {
-    const gl = this.canvas.getContext('webgl2', {
-      alpha: true,
-      antialias: false,
-      premultipliedAlpha: false,
-    }) ?? this.canvas.getContext('webgl', {
-      alpha: true,
-      antialias: false,
-      premultipliedAlpha: false,
-    })
-    if (!gl) {
-      return
-    }
-
-    const vertexSource = `
-      attribute vec2 a_position;
-      varying vec2 v_uv;
-
-      void main() {
-        v_uv = vec2(a_position.x * 0.5 + 0.5, 1.0 - (a_position.y * 0.5 + 0.5));
-        gl_Position = vec4(a_position, 0.0, 1.0);
-      }
-    `
-    const fragmentSource = `
-      precision mediump float;
-      varying vec2 v_uv;
-      uniform sampler2D u_texture;
-
-      void main() {
-        vec4 color = texture2D(u_texture, v_uv);
-        vec3 premultiplied = color.rgb * color.a;
-        float irate = max(max(premultiplied.r, premultiplied.g), premultiplied.b);
-        gl_FragColor = vec4(premultiplied, irate);
-      }
-    `
-    const vertexShader = this.compileShader(gl, gl.VERTEX_SHADER, vertexSource)
-    const fragmentShader = this.compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource)
-    if (!vertexShader || !fragmentShader) {
-      return
-    }
-
-    const program = gl.createProgram()
-    if (!program) {
-      return
-    }
-    gl.attachShader(program, vertexShader)
-    gl.attachShader(program, fragmentShader)
-    gl.linkProgram(program)
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      gl.deleteProgram(program)
-      return
-    }
-
-    const positionBuffer = gl.createBuffer()
-    const texture = gl.createTexture()
-    if (!positionBuffer || !texture) {
-      return
-    }
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
-
-    const positionLocation = gl.getAttribLocation(program, 'a_position')
-    if (positionLocation < 0) {
-      return
-    }
-
-    gl.useProgram(program)
-    gl.enableVertexAttribArray(positionLocation)
-    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
-
-    gl.bindTexture(gl.TEXTURE_2D, texture)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-
-    gl.enable(gl.BLEND)
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
-
-    this.gl = gl
-    this.program = program
-    this.positionBuffer = positionBuffer
-    this.texture = texture
-    this.texLocation = gl.getUniformLocation(program, 'u_texture')
-  }
-
-  private compileShader(
-    gl: WebGLRenderingContext | WebGL2RenderingContext,
-    type: number,
-    source: string,
-  ) {
-    const shader = gl.createShader(type)
-    if (!shader) {
-      return null
-    }
-    gl.shaderSource(shader, source)
-    gl.compileShader(shader)
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      gl.deleteShader(shader)
-      return null
-    }
-    return shader
-  }
-}
-
-const apRenderer = new ApVideoRenderer(apCanvas)
-
 function pushDebugError(error: unknown) {
   const text =
     typeof error === 'string'
@@ -780,6 +622,12 @@ function buildStaticAssetManifest() {
     { key: 'overlay/judge/v3/1.png', url: '/assets/mmw/overlay/judge/v3/1.png' },
     { key: 'overlay/autolive.png', url: '/assets/mmw/overlay/autolive.png' },
     { key: 'overlay/start_grad.png', url: '/assets/mmw/overlay/start_grad.png' },
+    { key: 'overlay/custom-score/icon.png', url: '/assets/mmw/overlay/custom-score/icon.png' },
+    { key: 'overlay/ap-native/all-perfect.png', url: '/assets/mmw/overlay/ap-native/all-perfect.png' },
+    { key: 'overlay/ap-native/all-perfect-line.png', url: '/assets/mmw/overlay/ap-native/all-perfect-line.png' },
+    { key: 'overlay/ap-native/flare.png', url: '/assets/mmw/overlay/ap-native/flare.png' },
+    { key: 'overlay/ap-native/flash.png', url: '/assets/mmw/overlay/ap-native/flash.png' },
+    { key: 'overlay/ap-native/sparkle.png', url: '/assets/mmw/overlay/ap-native/sparkle.png' },
   ]
 
   for (const rank of ['d', 'c', 'b', 'a', 's']) {
@@ -1020,6 +868,9 @@ function getSessionMetadata(params: UrlPreviewParams): SessionMetadata {
     arranger: params.arranger,
     vocal: params.vocal,
     difficulty: params.difficulty,
+    customScoreInfo: params.customScoreInfo,
+    scoreTitle: params.scoreTitle,
+    scoreCreator: params.scoreCreator,
   }
 }
 
@@ -1041,7 +892,6 @@ async function ensureStaticResourcesLoaded() {
       ...manifest.assets.map((entry) => ({ ...entry, kind: 'asset' as const, label: '静态贴图' })),
       ...manifest.fonts.map((entry) => ({ ...entry, kind: 'font' as const, label: '字体资源' })),
       ...manifest.sounds.map((entry) => ({ ...entry, kind: 'sound' as const, label: '音效资源' })),
-      { key: 'ap-video', url: AP_VIDEO_URL, kind: 'ap' as const, label: 'AP 视频' },
     ]
     const progressByUrl = new Map<string, { loaded: number; total: number }>()
     let completedItems = 0
@@ -1085,18 +935,13 @@ async function ensureStaticResourcesLoaded() {
         await player.preloadSound(entry.key, bytes)
         return
       }
-      setApVideoSource(bytes)
     }
 
     await Promise.all(entries.filter((entry) => entry.kind === 'asset').map(loadEntry))
     await Promise.all(entries.filter((entry) => entry.kind === 'font').map(loadEntry))
     const soundResults = await Promise.allSettled(entries.filter((entry) => entry.kind === 'sound').map(loadEntry))
-    const apResults = await Promise.allSettled(entries.filter((entry) => entry.kind === 'ap').map(loadEntry))
     if (soundResults.some((result) => result.status === 'rejected')) {
       resourceWarningMessage = '部分 key 音资源加载失败，可能会缺少音效。'
-    }
-    if (apResults.some((result) => result.status === 'rejected')) {
-      resourceWarningMessage = [resourceWarningMessage, 'AP 视频缓存失败，可能无法离线播放。'].filter(Boolean).join(' ')
     }
   })()
 
@@ -1127,23 +972,6 @@ function getRenderTargetSize(width: number, height: number) {
   }
 }
 
-function resizeApCanvas() {
-  const bounds = previewPanel.getBoundingClientRect()
-  const renderSize = getRenderTargetSize(bounds.width, bounds.height)
-  const width = Math.max(2, Math.round(renderSize.width * renderSize.dpr))
-  const height = Math.max(2, Math.round(renderSize.height * renderSize.dpr))
-  if (apCanvas.width === width && apCanvas.height === height) {
-    return
-  }
-  apCanvas.width = width
-  apCanvas.height = height
-  apRenderer.resize()
-}
-
-function clearApCanvas() {
-  apRenderer.clear()
-}
-
 function applyRenderSize() {
   if (!runtimeReady) {
     return
@@ -1151,61 +979,6 @@ function applyRenderSize() {
   const bounds = previewPanel.getBoundingClientRect()
   const renderSize = getRenderTargetSize(bounds.width, bounds.height)
   player.resize(renderSize.width, renderSize.height, renderSize.dpr)
-  resizeApCanvas()
-}
-
-function stopApPlayback(resetTrigger: boolean) {
-  apVideo.pause()
-  apVideo.currentTime = 0
-  apLastDrawMs = 0
-  apPlaybackActive = false
-  apLayer.hidden = true
-  previewPanel.classList.remove('ap-active')
-  clearApCanvas()
-  if (resetTrigger) {
-    apSequenceTriggered = false
-  }
-}
-
-function startApPlayback() {
-  if (apSequenceTriggered) {
-    return
-  }
-  apSequenceTriggered = true
-  apPlaybackActive = true
-  apLayer.hidden = false
-  previewPanel.classList.add('ap-active')
-  resizeApCanvas()
-  clearApCanvas()
-  apLastDrawMs = 0
-  apVideo.currentTime = 0
-  apVideo.playbackRate = Number(speedSelect.value)
-  void apVideo.play().catch(() => {
-    sessionWarningMessage = 'AP 视频播放失败，已跳过。'
-    stopApPlayback(false)
-    updateUi(true)
-  })
-}
-
-function drawApFrame(nowMs: number) {
-  if (!apPlaybackActive || apVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    return
-  }
-  if (nowMs - apLastDrawMs < AP_DRAW_INTERVAL_MS) {
-    return
-  }
-  apLastDrawMs = nowMs
-  apRenderer.draw(apVideo)
-}
-
-function setApVideoSource(bytes: Uint8Array) {
-  if (apVideoObjectUrl) {
-    URL.revokeObjectURL(apVideoObjectUrl)
-    apVideoObjectUrl = null
-  }
-  apVideoObjectUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }))
-  apVideo.src = apVideoObjectUrl
-  apVideo.load()
 }
 
 function updateUi(force = false) {
@@ -1266,7 +1039,6 @@ async function loadPreparedPreview(
   previewReady = false
   pendingPlayAfterUnlock = false
   sessionWarningMessage = ''
-  stopApPlayback(true)
 
   const sourceOffsetMs = getSourceOffsetMs(params, scoreText, scoreFormat)
   const effectiveLeadInMs = Math.max(sourceOffsetMs, MIN_CHART_LEAD_IN_MS)
@@ -1392,6 +1164,32 @@ function resolvePostedScore(payload: PostedPreviewPayload) {
   throw new Error('postMessage 谱面内容为空')
 }
 
+function pickPostedInfoText(info: Record<string, unknown> | null, keys: string[]) {
+  if (!info) {
+    return null
+  }
+  for (const key of keys) {
+    const value = info[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+  return null
+}
+
+function resolvePostedCustomScoreInfo(payload: PostedPreviewPayload) {
+  const info = payload.info && typeof payload.info === 'object' && !Array.isArray(payload.info)
+    ? payload.info
+    : null
+  const scoreTitle = payload.scoreTitle ?? pickPostedInfoText(info, ['title', 'scoreTitle', 'name'])
+  const scoreCreator = payload.scoreCreator ?? pickPostedInfoText(info, ['creator', 'scoreCreator', 'author', 'userName'])
+  return {
+    enabled: payload.customScoreInfo === true || info !== null || !!scoreTitle || !!scoreCreator,
+    scoreTitle,
+    scoreCreator,
+  }
+}
+
 async function fetchPostedResource(url: string | null | undefined, key: 'bgm' | 'cover') {
   if (!url) {
     return null
@@ -1423,6 +1221,7 @@ async function loadPreviewFromPostedPayload(payload: PostedPreviewPayload) {
   }
   const serial = ++postMessageLoadSerial
   const { scoreText, scoreFormat } = resolvePostedScore(payload)
+  const customScoreInfo = resolvePostedCustomScoreInfo(payload)
   setLocalLoaderVisible(false)
   setStatus('正在接收谱面', '正在从父页面接收谱面数据。')
 
@@ -1438,6 +1237,9 @@ async function loadPreviewFromPostedPayload(payload: PostedPreviewPayload) {
     arranger: payload.arranger ?? null,
     vocal: payload.vocal ?? null,
     difficulty: payload.difficulty ?? null,
+    customScoreInfo: customScoreInfo.enabled,
+    scoreTitle: customScoreInfo.scoreTitle,
+    scoreCreator: customScoreInfo.scoreCreator,
     description1: null,
     description2: null,
     extra: null,
@@ -1504,6 +1306,9 @@ async function loadPreviewFromLocalInput(input: LocalPreviewInput) {
     arranger: input.arranger,
     vocal: input.vocal,
     difficulty: input.difficulty,
+    customScoreInfo: input.customScoreInfo,
+    scoreTitle: input.scoreTitle,
+    scoreCreator: input.scoreCreator,
     description1: null,
     description2: null,
     extra: null,
@@ -1534,6 +1339,9 @@ async function handleLocalLoaderSubmit(event: SubmitEvent) {
       arranger: readOptionalTextInput(localArrangerInput),
       vocal: readOptionalTextInput(localVocalInput),
       difficulty: readOptionalTextInput(localDifficultyInput),
+      customScoreInfo: localCustomScoreInfoInput.checked,
+      scoreTitle: readOptionalTextInput(localScoreTitleInput),
+      scoreCreator: readOptionalTextInput(localScoreCreatorInput),
       showLockControlsButton: localShowLockInput.checked,
     })
     setLocalLoaderVisible(false)
@@ -2095,9 +1903,6 @@ function frameLoop() {
     try {
       player.renderFrame()
       currentSnapshot = player.getStateSnapshot()
-      if (!apSequenceTriggered && Number.isFinite(currentSnapshot.apStartSec) && currentSnapshot.currentTimeSec >= currentSnapshot.apStartSec - 0.01) {
-        startApPlayback()
-      }
       if (currentSnapshot.transportState === 'error') {
         previewReady = false
         setStatus('预览运行失败', currentSnapshot.warnings || 'Wasm preview entered error state.')
@@ -2111,24 +1916,9 @@ function frameLoop() {
     }
   }
 
-  drawApFrame(performance.now())
   updateUi()
   window.requestAnimationFrame(frameLoop)
 }
-
-apVideo.loop = false
-apVideo.preload = 'metadata'
-apVideo.playsInline = true
-apVideo.addEventListener('ended', () => {
-  apPlaybackActive = false
-  apLayer.hidden = true
-  previewPanel.classList.remove('ap-active')
-})
-apVideo.addEventListener('error', () => {
-  sessionWarningMessage = 'AP 视频加载失败，已跳过。'
-  stopApPlayback(false)
-  updateUi(true)
-})
 
 bindTapAction(playToggle, () => {
   void (async () => {
@@ -2142,7 +1932,6 @@ bindTapAction(playToggle, () => {
       return
     }
     if (currentSnapshot.durationSec > 0 && currentSnapshot.currentTimeSec >= currentSnapshot.durationSec - 0.01) {
-      stopApPlayback(true)
       player.seek(0)
       player.renderFrame()
       currentSnapshot = player.getStateSnapshot()
@@ -2170,7 +1959,6 @@ progressInput.addEventListener('input', () => {
   if (!previewReady) {
     return
   }
-  stopApPlayback(true)
   player.seek(Number(progressInput.value))
   player.renderFrame()
   currentSnapshot = player.getStateSnapshot()
@@ -2183,7 +1971,6 @@ speedSelect.addEventListener('change', () => {
   }
   const rate = Number(speedSelect.value)
   player.setPlaybackRate(rate)
-  apVideo.playbackRate = rate
   currentSnapshot = player.getStateSnapshot()
   updateUi(true)
 })
@@ -2318,10 +2105,6 @@ document.addEventListener('keydown', (event) => {
 })
 window.addEventListener('beforeunload', () => {
   resizeObserver.disconnect()
-  if (apVideoObjectUrl) {
-    URL.revokeObjectURL(apVideoObjectUrl)
-    apVideoObjectUrl = null
-  }
   player.dispose()
 })
 

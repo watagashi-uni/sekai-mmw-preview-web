@@ -13,6 +13,9 @@ type LocalBootPayload = {
   arranger: string | null
   vocal: string | null
   difficulty: string | null
+  customScoreInfo: boolean
+  scoreTitle: string | null
+  scoreCreator: string | null
   showLockControlsButton: boolean
 }
 
@@ -196,6 +199,20 @@ function renderUploadPage() {
           </div>
           <div class="upload-row wide">
             <label>
+              <input id="upload-custom-score-info" type="checkbox" checked />
+              开场显示自制谱图标和谱面信息
+            </label>
+          </div>
+          <div class="upload-row">
+            <label for="upload-score-title">谱面标题</label>
+            <input id="upload-score-title" type="text" placeholder="默认使用曲名" />
+          </div>
+          <div class="upload-row">
+            <label for="upload-score-creator">谱面作者</label>
+            <input id="upload-score-creator" type="text" />
+          </div>
+          <div class="upload-row wide">
+            <label>
               <input id="upload-show-lock" type="checkbox" checked />
               全屏显示锁屏组件（录屏建议关闭）
             </label>
@@ -221,6 +238,9 @@ function renderUploadPage() {
   const composerInput = app.querySelector<HTMLInputElement>('#upload-composer')!
   const arrangerInput = app.querySelector<HTMLInputElement>('#upload-arranger')!
   const vocalInput = app.querySelector<HTMLInputElement>('#upload-vocal')!
+  const customScoreInfoInput = app.querySelector<HTMLInputElement>('#upload-custom-score-info')!
+  const scoreTitleInput = app.querySelector<HTMLInputElement>('#upload-score-title')!
+  const scoreCreatorInput = app.querySelector<HTMLInputElement>('#upload-score-creator')!
   const showLockInput = app.querySelector<HTMLInputElement>('#upload-show-lock')!
   const errorNode = app.querySelector<HTMLDivElement>('#upload-error')!
   const submitButton = app.querySelector<HTMLButtonElement>('#upload-submit')!
@@ -249,6 +269,9 @@ function renderUploadPage() {
       arranger: readOptionalText(arrangerInput),
       vocal: readOptionalText(vocalInput),
       difficulty: diffInput.value.trim() === '' ? null : diffInput.value.trim(),
+      customScoreInfo: customScoreInfoInput.checked,
+      scoreTitle: readOptionalText(scoreTitleInput),
+      scoreCreator: readOptionalText(scoreCreatorInput),
       showLockControlsButton: showLockInput.checked,
     }
 

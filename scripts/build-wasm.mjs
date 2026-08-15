@@ -4,8 +4,14 @@ import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import os from 'node:os'
 
-const projectRoot = '/Users/watagashi/Documents/Code/sekai-mmw-preview-web'
-const susToJsonProjectRoot = '/Users/watagashi/Documents/Code/OpenSekai_Community/Tools/SusToJsonCpp'
+const projectRoot = path.resolve(import.meta.dirname, '..')
+const susToJsonProjectCandidates = [
+  process.env.SEKAI_SUS_TO_JSON_ROOT,
+  path.resolve(projectRoot, '../Sekai-SUS-Parser/SusToJsonCpp'),
+].filter(Boolean)
+const susToJsonProjectRoot = susToJsonProjectCandidates.find((candidate) =>
+  fs.existsSync(path.join(candidate, 'CMakeLists.txt')),
+) ?? susToJsonProjectCandidates[0]
 const generatedDir = path.join(projectRoot, 'src/generated')
 const publicWasmDir = path.join(projectRoot, 'public/wasm')
 const publicSusToJsonWasmDir = path.join(publicWasmDir, 'sus-to-json')

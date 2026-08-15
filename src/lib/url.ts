@@ -12,6 +12,31 @@ function pickFirstNonEmptyParam(url: URL, keys: readonly string[]) {
 
 type ConfigPayload = Record<string, unknown>
 
+function asObject(value: unknown): ConfigPayload | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as ConfigPayload
+    : null
+}
+
+function asOptionalBoolean(value: unknown) {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'number') {
+    return value !== 0
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true
+    }
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+      return false
+    }
+  }
+  return null
+}
+
 function asNonEmptyString(value: unknown) {
   const text =
     typeof value === 'string'
@@ -88,6 +113,7 @@ function parseConfigPayload(url: URL): ConfigPayload | null {
 
 export function parseUrlPreviewParams(url: URL): UrlPreviewParams {
   const config = parseConfigPayload(url)
+  const customInfo = config ? asObject(config.info) ?? asObject(config.i) : null
   const sus =
     (config ? pickFirstNonEmptyFromConfig(config, ['s', 'sus']) : null) ??
     url.searchParams.get('sus')
@@ -109,6 +135,15 @@ export function parseUrlPreviewParams(url: URL): UrlPreviewParams {
   if (rawOffsetMs !== null && Number.isNaN(rawOffsetMs)) {
     throw new Error('Invalid `offset` query parameter.')
   }
+
+  const scoreTitle =
+    (customInfo ? pickFirstNonEmptyFromConfig(customInfo, ['title', 'scoreTitle', 'name']) : null) ??
+    (config ? pickFirstNonEmptyFromConfig(config, ['st', 'scoreTitle', 'chartTitle']) : null) ??
+    pickFirstNonEmptyParam(url, ['scoreTitle', 'chartTitle'])
+  const scoreCreator =
+    (customInfo ? pickFirstNonEmptyFromConfig(customInfo, ['creator', 'author', 'userName', 'scoreCreator']) : null) ??
+    (config ? pickFirstNonEmptyFromConfig(config, ['sc', 'scoreCreator', 'chartCreator', 'author']) : null) ??
+    pickFirstNonEmptyParam(url, ['scoreCreator', 'chartCreator', 'author'])
 
   return {
     sus: sus ?? '',
@@ -138,6 +173,12 @@ export function parseUrlPreviewParams(url: URL): UrlPreviewParams {
     difficulty:
       (config ? pickFirstNonEmptyFromConfig(config, ['d', 'difficulty', 'diff', 'level']) : null) ??
       pickFirstNonEmptyParam(url, ['difficulty', 'diff', 'level']),
+    customScoreInfo:
+      (config ? asOptionalBoolean(config.customScoreInfo ?? config.customInfo ?? config.ci) : null) ??
+      asOptionalBoolean(pickFirstNonEmptyParam(url, ['customScoreInfo', 'customInfo', 'ci'])) ??
+      (customInfo !== null || scoreTitle !== null || scoreCreator !== null),
+    scoreTitle,
+    scoreCreator,
     description1:
       (config ? pickFirstNonEmptyFromConfig(config, ['d1', 'description1', 'desc1', 'introDesc1', 'meta1', 'info1']) : null) ??
       pickFirstNonEmptyParam(url, ['description1', 'desc1', 'introDesc1', 'meta1', 'info1']),

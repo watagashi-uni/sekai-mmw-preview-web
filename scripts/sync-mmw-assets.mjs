@@ -1,11 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const projectRoot = '/Users/watagashi/Documents/Code/sekai-mmw-preview-web'
-const mmwRoot = '/Users/watagashi/Documents/Code/MikuMikuWorld/MikuMikuWorld'
-const overlayRoot = '/Users/watagashi/Downloads/pjsekai-overlay-APPEND-main/assets'
-const backgroundGenRoot = '/Users/watagashi/Documents/Code/pjsekai-background-gen-rust/crates/core/assets'
-const overlayRendererAssetRoot = '/Users/watagashi/Documents/Code/MikuMikuWorld/tools/overlay_renderer/assets/mmw'
+const projectRoot = path.resolve(import.meta.dirname, '..')
+const workspaceRoot = path.resolve(projectRoot, '..')
+const mmwRoot = process.env.MMW_ROOT ?? path.join(workspaceRoot, 'MikuMikuWorld/MikuMikuWorld')
+const overlayRoot = process.env.PJSK_OVERLAY_ROOT ?? path.join(workspaceRoot, 'pjsekai-overlay-APPEND/assets')
+const backgroundGenRoot = process.env.PJSK_BACKGROUND_GEN_ROOT ?? path.join(workspaceRoot, 'pjsekai-background-gen-rust/crates/core/assets')
+const overlayRendererAssetRoot = process.env.MMW_OVERLAY_ASSET_ROOT ?? path.join(workspaceRoot, 'MikuMikuWorld/tools/overlay_renderer/assets/mmw')
+const openSekaiResultRoot = process.env.OPENSEKAI_RESULT_ROOT ?? path.join(workspaceRoot, 'OpenSekai/Assets/Sekai/assetbundle/resources/tutorial/effect_asset/live/result/default/textures')
 
 const assetCopies = [
   ['res/editor/default.png', 'public/assets/mmw/default.png'],
@@ -37,7 +39,6 @@ const overlayAssetCopies = [
   ['background_full.png', 'public/assets/mmw/background_overlay.png'],
   ['start_bg.png', 'public/assets/mmw/overlay/start_bg.png'],
   ['start_grad.png', 'public/assets/mmw/overlay/start_grad.png'],
-  ['ap.mp4', 'public/assets/mmw/overlay/ap.mp4'],
   ['combo.png', 'public/assets/mmw/overlay/combo.png'],
   ['life.png', 'public/assets/mmw/overlay/life.png'],
 ]
@@ -48,8 +49,7 @@ const fontCopies = [
   ['font/NotoSansCJKSC-Black.ttf', 'public/assets/mmw/font/NotoSansCJKSC-Black.ttf'],
 ]
 
-const overlayTopLevelPngCopies = fs
-  .readdirSync(overlayRoot, { withFileTypes: true })
+const overlayTopLevelPngCopies = (fs.existsSync(overlayRoot) ? fs.readdirSync(overlayRoot, { withFileTypes: true }) : [])
   .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.png'))
   .map((entry) => [entry.name, `public/assets/mmw/overlay/${entry.name}`])
 
@@ -62,6 +62,14 @@ const overlayDirCopies = [
 
 const backgroundGenDirCopies = [
   ['v3', 'public/assets/mmw/overlay/bggen/v3'],
+]
+
+const openSekaiResultCopies = [
+  ['ALL-PERFECT.png', 'public/assets/mmw/overlay/ap-native/all-perfect.png'],
+  ['txt_allperfect_line_dgr.png', 'public/assets/mmw/overlay/ap-native/all-perfect-line.png'],
+  ['tex_allperfect_flare.png', 'public/assets/mmw/overlay/ap-native/flare.png'],
+  ['tex_flash_v2_01.png', 'public/assets/mmw/overlay/ap-native/flash.png'],
+  ['tex_kira_v2_01.png', 'public/assets/mmw/overlay/ap-native/sparkle.png'],
 ]
 
 const atlasSources = {
@@ -209,11 +217,13 @@ for (const [from, to] of assetCopies) {
   fs.copyFileSync(source, target)
 }
 
-for (const [from, to] of overlayAssetCopies) {
-  const source = path.join(overlayRoot, from)
-  const target = path.join(projectRoot, to)
-  ensureDir(path.dirname(target))
-  fs.copyFileSync(source, target)
+if (fs.existsSync(overlayRoot)) {
+  for (const [from, to] of overlayAssetCopies) {
+    const source = path.join(overlayRoot, from)
+    const target = path.join(projectRoot, to)
+    ensureDir(path.dirname(target))
+    fs.copyFileSync(source, target)
+  }
 }
 
 for (const [from, to] of overlayTopLevelPngCopies) {
@@ -224,7 +234,10 @@ for (const [from, to] of overlayTopLevelPngCopies) {
 }
 
 for (const [from, to] of overlayDirCopies) {
-  copyDirectoryRecursive(path.join(overlayRoot, from), path.join(projectRoot, to))
+  const source = path.join(overlayRoot, from)
+  if (fs.existsSync(source)) {
+    copyDirectoryRecursive(source, path.join(projectRoot, to))
+  }
 }
 
 for (const [from, to] of fontCopies) {
@@ -237,6 +250,15 @@ for (const [from, to] of fontCopies) {
 if (fs.existsSync(backgroundGenRoot)) {
   for (const [from, to] of backgroundGenDirCopies) {
     copyDirectoryRecursive(path.join(backgroundGenRoot, from), path.join(projectRoot, to))
+  }
+}
+
+if (fs.existsSync(openSekaiResultRoot)) {
+  for (const [from, to] of openSekaiResultCopies) {
+    const source = path.join(openSekaiResultRoot, from)
+    const target = path.join(projectRoot, to)
+    ensureDir(path.dirname(target))
+    fs.copyFileSync(source, target)
   }
 }
 
