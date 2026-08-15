@@ -2,10 +2,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
+import os from 'node:os'
 
 const projectRoot = '/Users/watagashi/Documents/Code/sekai-mmw-preview-web'
+const susToJsonProjectRoot = '/Users/watagashi/Documents/Code/OpenSekai_Community/Tools/SusToJsonCpp'
 const generatedDir = path.join(projectRoot, 'src/generated')
 const publicWasmDir = path.join(projectRoot, 'public/wasm')
+const publicSusToJsonWasmDir = path.join(publicWasmDir, 'sus-to-json')
 const wasmManifestFile = path.join(generatedDir, 'mmwWasmAsset.ts')
 
 function hasExecutable(name) {
@@ -23,6 +26,7 @@ if (!hasExecutable('emcc')) {
 
 fs.mkdirSync(generatedDir, { recursive: true })
 fs.mkdirSync(publicWasmDir, { recursive: true })
+fs.mkdirSync(publicSusToJsonWasmDir, { recursive: true })
 
 const outputFile = path.join(generatedDir, 'mmw-preview.js')
 const sourceFiles = [
@@ -149,4 +153,35 @@ fs.copyFileSync(
 fs.writeFileSync(
   wasmManifestFile,
   `export const mmwWasmFilename = '${hashedWasmName}'\nexport const mmwWasmHash = '${wasmHash}'\n`,
+)
+
+if (!fs.existsSync(path.join(susToJsonProjectRoot, 'CMakeLists.txt'))) {
+  throw new Error(`Missing SUS to JSON wasm source: ${susToJsonProjectRoot}`)
+}
+
+const susToJsonBuildDir = path.join(os.tmpdir(), 'sekai-mmw-preview-sus-to-json-wasm')
+fs.rmSync(susToJsonBuildDir, { recursive: true, force: true })
+execFileSync(
+  'emcmake',
+  ['cmake', '-S', susToJsonProjectRoot, '-B', susToJsonBuildDir],
+  {
+    cwd: projectRoot,
+    stdio: 'inherit',
+  },
+)
+execFileSync(
+  'cmake',
+  ['--build', susToJsonBuildDir, '--target', 'sus_to_json_wasm'],
+  {
+    cwd: projectRoot,
+    stdio: 'inherit',
+  },
+)
+fs.copyFileSync(
+  path.join(susToJsonBuildDir, 'sus_to_json_wasm.js'),
+  path.join(publicSusToJsonWasmDir, 'sus_to_json_wasm.js'),
+)
+fs.copyFileSync(
+  path.join(susToJsonBuildDir, 'sus_to_json_wasm.wasm'),
+  path.join(publicSusToJsonWasmDir, 'sus_to_json_wasm.wasm'),
 )

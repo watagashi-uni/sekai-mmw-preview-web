@@ -259,6 +259,28 @@ namespace custom_score_json
         return filtered;
     }
 
+    [[nodiscard]] bool isSkippedHiddenConnectionNote(const RawNote& note)
+    {
+        return note.isSkip
+            && (note.noteBaseType == 6 || note.noteBaseType == 14 || note.category == 11)
+            && note.previousConnectionId != -1
+            && note.nextConnectionId != -1;
+    }
+
+    [[nodiscard]] std::vector<const RawNote*> normalizeRenderChain(const std::vector<const RawNote*>& chain)
+    {
+        const std::vector<const RawNote*> deduped = removeAdjacentVisibleRelayDuplicates(chain);
+        std::vector<const RawNote*> filtered;
+        filtered.reserve(deduped.size());
+        for (const RawNote* note : deduped) {
+            if (note != nullptr && isSkippedHiddenConnectionNote(*note)) {
+                continue;
+            }
+            filtered.push_back(note);
+        }
+        return filtered;
+    }
+
     [[nodiscard]] std::vector<std::vector<const RawNote*>> buildChains(
         const std::vector<RawNote>& notes,
         const std::unordered_map<int, const RawNote*>& byId,
@@ -306,7 +328,7 @@ namespace custom_score_json
 
     void addChain(Score& score, const std::vector<const RawNote*>& rawChain)
     {
-        const std::vector<const RawNote*> chain = removeAdjacentVisibleRelayDuplicates(rawChain);
+        const std::vector<const RawNote*> chain = normalizeRenderChain(rawChain);
         if (chain.size() < 2 || chain.front() == nullptr || chain.back() == nullptr) {
             return;
         }

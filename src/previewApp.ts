@@ -1,6 +1,7 @@
 import './main.css'
 
 import { MmwWasmPlayer } from './lib/mmwWasm'
+import { convertSusToCustomScoreJson } from './lib/susToJsonWasm'
 import type { PreviewRuntimeConfig, ScoreTextFormat, SessionMetadata, UrlPreviewParams, WasmPlayerSnapshot } from './lib/types'
 import { normalizeOffsetMs, parseUrlPreviewParams } from './lib/url'
 
@@ -1269,11 +1270,19 @@ async function loadPreparedPreview(
 
   const sourceOffsetMs = getSourceOffsetMs(params, scoreText, scoreFormat)
   const effectiveLeadInMs = Math.max(sourceOffsetMs, MIN_CHART_LEAD_IN_MS)
+  let loaderScoreText = scoreText
+  let loaderScoreFormat = scoreFormat
 
-  setStatus('正在初始化谱面', `正在把${scoreFormat === 'custom-score-json' ? '自制 JSON' : ' SUS'}、背景、HUD 和音频交给 wasm。`)
+  if (scoreFormat === 'sus') {
+    setStatus('正在转换谱面', '正在使用 sus2json wasm 转换 SUS。')
+    loaderScoreText = await convertSusToCustomScoreJson(scoreText)
+    loaderScoreFormat = 'custom-score-json'
+  }
+
+  setStatus('正在初始化谱面', `正在把${loaderScoreFormat === 'custom-score-json' ? '自制 JSON' : ' SUS'}、背景、HUD 和音频交给 wasm。`)
   await player.loadSession({
-    scoreText,
-    scoreFormat,
+    scoreText: loaderScoreText,
+    scoreFormat: loaderScoreFormat,
     sourceOffsetMs,
     effectiveLeadInMs,
     bgmBytes,
