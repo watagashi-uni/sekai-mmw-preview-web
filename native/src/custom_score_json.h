@@ -326,9 +326,8 @@ namespace custom_score_json
         return chains;
     }
 
-    void addChain(Score& score, const std::vector<const RawNote*>& rawChain)
+    void addChainSegment(Score& score, const std::vector<const RawNote*>& chain)
     {
-        const std::vector<const RawNote*> chain = normalizeRenderChain(rawChain);
         if (chain.size() < 2 || chain.front() == nullptr || chain.back() == nullptr) {
             return;
         }
@@ -381,6 +380,40 @@ namespace custom_score_json
         }
         sortHoldSteps(score, hold);
         score.holdNotes[startID] = hold;
+    }
+
+    void addChain(Score& score, const std::vector<const RawNote*>& rawChain)
+    {
+        const std::vector<const RawNote*> chain = normalizeRenderChain(rawChain);
+        std::vector<const RawNote*> segment;
+        segment.reserve(chain.size());
+
+        // Connection IDs describe the maker's ownership tree, not necessarily one
+        // continuous rendered path. In particular, generated one-tick taps can
+        // have an END node whose nextConnectionId points at a later END node. The
+        // flat renderer stops at that first END; treating the whole ownership tree
+        // as one MMW hold incorrectly draws a body between the two notes.
+        for (size_t index = 0; index < chain.size(); ++index) {
+            const RawNote* raw = chain[index];
+            if (raw == nullptr) {
+                continue;
+            }
+
+            const SlideKind kind = getSlideKind(*raw, index + 1 == chain.size());
+            if (segment.empty()) {
+                if (kind != SlideKind::Start) {
+                    continue;
+                }
+                segment.push_back(raw);
+                continue;
+            }
+
+            segment.push_back(raw);
+            if (kind == SlideKind::End) {
+                addChainSegment(score, segment);
+                segment.clear();
+            }
+        }
     }
 
     [[nodiscard]] Score parse(const std::string& text, float normalizedOffsetMs)

@@ -1168,7 +1168,12 @@ namespace mmw_preview
 
     [[nodiscard]] std::string comboDedupKey(const Note& note)
     {
+        // Relay ticks at the same position can belong to different holds and each
+        // carries its own judgment. Keep spatial dedup for standalone/end notes,
+        // but include hold ownership for mids so those judgments stay distinct.
+        const int holdOwner = note.type == NoteType::HoldMid ? note.parentID : -1;
         return std::to_string(static_cast<int>(note.type)) + "|" +
+            std::to_string(holdOwner) + "|" +
             std::to_string(note.tick) + "|" +
             std::to_string(note.lane) + "|" +
             std::to_string(note.width) + "|" +
