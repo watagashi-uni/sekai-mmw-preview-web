@@ -308,6 +308,64 @@ html, body, #app {
   background: rgba(0, 0, 0, 0.4);
 }
 
+.upload-row .upload-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.upload-row .upload-toggle:hover {
+  border-color: rgba(76, 154, 255, 0.28);
+  background: rgba(76, 154, 255, 0.06);
+}
+
+.upload-row .upload-toggle:focus-within {
+  border-color: var(--accent-1);
+  box-shadow: 0 0 0 3px rgba(76, 154, 255, 0.16);
+}
+
+.upload-row .upload-toggle input[type='checkbox'] {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(169, 199, 232, 0.42);
+  border-radius: 6px;
+  background: rgba(4, 10, 18, 0.68);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.upload-row .upload-toggle input[type='checkbox']:checked {
+  border-color: var(--accent-1);
+  background-color: var(--accent-1);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m5 10 3 3 7-7' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  box-shadow: 0 4px 12px rgba(76, 154, 255, 0.3);
+}
+
+.upload-row .upload-toggle input[type='checkbox']:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.upload-row .upload-toggle input[type='checkbox']:checked:focus {
+  background-color: var(--accent-1);
+  box-shadow: 0 4px 12px rgba(76, 154, 255, 0.3);
+}
+
+.upload-toggle span {
+  line-height: 1.4;
+}
+
 .upload-row input[type='file'] {
   padding: 8px;
   background: rgba(255, 255, 255, 0.02);

@@ -198,9 +198,9 @@ function renderUploadPage() {
             <input id="upload-vocal" type="text" />
           </div>
           <div class="upload-row wide">
-            <label>
+            <label class="upload-toggle">
               <input id="upload-custom-score-info" type="checkbox" checked />
-              开场显示自制谱图标和谱面信息
+              <span>开场显示自制谱图标和谱面信息</span>
             </label>
           </div>
           <div class="upload-row">
@@ -212,9 +212,9 @@ function renderUploadPage() {
             <input id="upload-score-creator" type="text" />
           </div>
           <div class="upload-row wide">
-            <label>
+            <label class="upload-toggle">
               <input id="upload-show-lock" type="checkbox" checked />
-              全屏显示锁屏组件（录屏建议关闭）
+              <span>全屏显示锁屏组件（录屏建议关闭）</span>
             </label>
           </div>
         </div>
