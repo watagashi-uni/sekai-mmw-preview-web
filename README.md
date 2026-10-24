@@ -1,3 +1,5 @@
+## 该项目已归档，不再更新。新站已删除所有AGPL项目引用代码并不再开源
+
 # sekai-mmw-preview-web
 
 Project SEKAI 风格 SUS 预览器（Web 版）。
